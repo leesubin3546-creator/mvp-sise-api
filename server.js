@@ -21,18 +21,18 @@ const CACHE_MS = 5 * 60 * 1000;
 // 로아땡 메이플스토리 메소 매물 페이지
 const RAO_URL = 'https://www.itemthankyou.com/sell/search.asp?type_f=1&type_g=3&type_s=&type_i=&SearchStr=';
 
-// "1억당 2,120원" / "100억당 2,300원" / "100,000억 850원" 형태를 1억당 원으로 정규화
-function parseRao(html) {
+// "1억당 2,120원" / "100억당 2,300원" 형태를 1억당 원으로 정규화
+function parseRao(rawHtml) {
   const prices = [];
-  // 판매금액 컬럼의 "N억당 X원" 또는 "N억 X원" 패턴
+  // HTML 태그 제거 후 공백 정규화 (셀 사이 태그로 정규식이 끊기는 것 방지)
+  const html = rawHtml.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
   const re = /([\d,]+)\s*억\s*당?\s*([\d,]+)\s*원/g;
   let m;
   while ((m = re.exec(html)) !== null) {
-    const eok = parseFloat(m[1].replace(/,/g, ''));   // 몇 억당
-    const price = parseFloat(m[2].replace(/,/g, '')); // 그 가격(원)
+    const eok = parseFloat(m[1].replace(/,/g, ''));
+    const price = parseFloat(m[2].replace(/,/g, ''));
     if (eok > 0 && price > 0) {
-      const per1eok = price / eok;                    // 1억당 원
-      // 이상치 제거 (메이플 메소 억당 대략 500~5000원 범위)
+      const per1eok = price / eok;
       if (per1eok >= 300 && per1eok <= 6000) prices.push(per1eok);
     }
   }
@@ -42,40 +42,51 @@ function parseRao(html) {
 function stats(arr) {
   if (!arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
-  const median = s[Math.floor(s.length / 2)];
-  return {
-    min: Math.round(s[0]),
-    median: Math.round(median),
-    count: s.length
-  };
+  return { min: Math.round(s[0]), median: Math.round(s[Math.floor(s.length / 2)]), count: s.length };
 }
 
 async function fetchRao() {
   const r = await fetch(RAO_URL, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MVPCalc/1.0)' }
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'ko-KR,ko;q=0.9',
+      'Referer': 'https://www.itemthankyou.com/'
+    }
   });
   const buf = Buffer.from(await r.arrayBuffer());
   const html = iconv.decode(buf, 'euc-kr');
-  return stats(parseRao(html));
+  const prices = parseRao(html);
+  const flat = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const idx = flat.indexOf('억');
+  return {
+    stat: stats(prices),
+    debug: {
+      httpStatus: r.status,
+      htmlLen: html.length,
+      matched: prices.length,
+      sample: flat.slice(Math.max(0, idx - 40), idx + 120)
+    }
+  };
 }
 
 app.get('/api/sise', async (req, res) => {
   try {
-    if (cache.data && Date.now() - cache.ts < CACHE_MS) {
+    if (!req.query.debug && cache.data && Date.now() - cache.ts < CACHE_MS) {
       return res.json({ ...cache.data, cached: true });
     }
     const rao = await fetchRao();
-    // 대표 환금가: 중앙값 사용 (min은 미끼매물일 수 있음)
-    const raoVal = rao ? rao.median : null;
+    const st = rao.stat;
     const data = {
-      raoddaeng: raoVal,        // 로아땡 1억당 현금(원, 중앙값)
-      raoddaeng_min: rao ? rao.min : null,
-      itemmania: null,          // TODO: 아이템매니아 파서 (구조 확인 후 추가)
-      mesoMarket: null,         // 메소마켓 억당 메포 (공식 API 없음 → 수동 입력)
+      raoddaeng: st ? st.median : null,
+      raoddaeng_min: st ? st.min : null,
+      itemmania: null,
+      mesoMarket: null,
       updated: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      source: 'itemthankyou.com'
+      source: 'itemthankyou.com',
+      debug: req.query.debug ? rao.debug : undefined
     };
-    cache = { data, ts: Date.now() };
+    if (data.raoddaeng != null) cache = { data, ts: Date.now() };
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
