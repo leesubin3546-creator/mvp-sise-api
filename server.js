@@ -1,10 +1,9 @@
 // 메이플 MVP작 시세 자동수집 백엔드 (Render 무료티어용)
-// 로아땡(로켓아이템땡스) 메이플 메소 1억당 현금시세를 스크래핑해서 JSON으로 제공.
-// Node 18+ (내장 fetch 사용). iconv-lite로 EUC-KR 디코딩.
+// 게임비트(gamebit.co.kr) 공개 시세 JSON을 사용해 서버별 "1억 메소 → 현금(원)" 시세를 제공.
+// 로아땡은 Cloudflare 봇차단으로 서버측 접근 불가 → 게임비트 JSON으로 대체.
+// Node 18+ (내장 fetch 사용).
 
 const express = require('express');
-const iconv = require('iconv-lite');
-
 const app = express();
 
 // CORS 허용 (정적 HTML 계산기에서 호출 가능하게)
@@ -14,86 +13,64 @@ app.use((req, res, next) => {
   next();
 });
 
-// ---- 간단 캐시 (무료서버 부하/차단 방지: 5분) ----
-let cache = { data: null, ts: 0 };
+// 게임비트 서버ID(sid) 매핑 — 주요 일반 서버
+const SERVERS = {
+  '오로라': 2115, '유니온': 2118, '스카니아': 2119, '루나': 2120,
+  '제니스': 2121, '크로아': 2122, '베라': 2123, '엘리시움': 2124
+};
+const STATUS_URL = 'https://gamebit.co.kr/jdata2/maple/total_status.json';
+
+// ---- 캐시 (원본 status 5분) ----
+let cache = { status: null, ts: 0 };
 const CACHE_MS = 5 * 60 * 1000;
 
-// 로아땡 메이플스토리 메소 매물 페이지
-const RAO_URL = 'https://www.itemthankyou.com/sell/search.asp?type_f=1&type_g=3&type_s=&type_i=&SearchStr=';
-
-// "1억당 2,120원" / "100억당 2,300원" 형태를 1억당 원으로 정규화
-function parseRao(rawHtml) {
-  const prices = [];
-  // HTML 태그 제거 후 공백 정규화 (셀 사이 태그로 정규식이 끊기는 것 방지)
-  const html = rawHtml.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
-  const re = /([\d,]+)\s*억\s*당?\s*([\d,]+)\s*원/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const eok = parseFloat(m[1].replace(/,/g, ''));
-    const price = parseFloat(m[2].replace(/,/g, ''));
-    if (eok > 0 && price > 0) {
-      const per1eok = price / eok;
-      if (per1eok >= 300 && per1eok <= 6000) prices.push(per1eok);
-    }
+async function getStatus(force) {
+  if (!force && cache.status && Date.now() - cache.ts < CACHE_MS) {
+    return { status: cache.status, httpStatus: 200, cached: true };
   }
-  return prices;
-}
-
-function stats(arr) {
-  if (!arr.length) return null;
-  const s = [...arr].sort((a, b) => a - b);
-  return { min: Math.round(s[0]), median: Math.round(s[Math.floor(s.length / 2)]), count: s.length };
-}
-
-async function fetchRao() {
-  const r = await fetch(RAO_URL, {
+  const r = await fetch(STATUS_URL, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml',
-      'Accept-Language': 'ko-KR,ko;q=0.9',
-      'Referer': 'https://www.itemthankyou.com/'
+      'Accept': 'application/json,text/plain,*/*',
+      'Referer': 'https://gamebit.co.kr/maple'
     }
   });
-  const buf = Buffer.from(await r.arrayBuffer());
-  const html = iconv.decode(buf, 'euc-kr');
-  const prices = parseRao(html);
-  const flat = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  const idx = flat.indexOf('억');
-  return {
-    stat: stats(prices),
-    debug: {
-      httpStatus: r.status,
-      htmlLen: html.length,
-      matched: prices.length,
-      sample: flat.slice(Math.max(0, idx - 40), idx + 120)
-    }
-  };
+  let status = null;
+  const text = await r.text();
+  try { status = JSON.parse(text); } catch (e) { status = null; }
+  if (status) cache = { status, ts: Date.now() };
+  return { status, httpStatus: r.status, cached: false, len: text.length };
 }
 
 app.get('/api/sise', async (req, res) => {
   try {
-    if (!req.query.debug && cache.data && Date.now() - cache.ts < CACHE_MS) {
-      return res.json({ ...cache.data, cached: true });
+    const sid = parseInt(req.query.sid) || 2119; // 기본 스카니아
+    const { status, httpStatus, cached, len } = await getStatus(!!req.query.debug);
+
+    let price = null, updated = null;
+    const servers = {};
+    if (status) {
+      for (const [name, id] of Object.entries(SERVERS)) {
+        if (status[id]) servers[name] = Math.round(status[id].price);
+      }
+      if (status[sid]) { price = Math.round(status[sid].price); updated = status[sid].last_update; }
     }
-    const rao = await fetchRao();
-    const st = rao.stat;
-    const data = {
-      raoddaeng: st ? st.median : null,
-      raoddaeng_min: st ? st.min : null,
-      itemmania: null,
-      mesoMarket: null,
-      updated: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      source: 'itemthankyou.com',
-      debug: req.query.debug ? rao.debug : undefined
-    };
-    if (data.raoddaeng != null) cache = { data, ts: Date.now() };
-    res.json(data);
+
+    res.json({
+      raoddaeng: price,          // 선택 서버의 1억 메소당 현금(원) — 프론트 호환 키
+      price: price,
+      sid: sid,
+      servers: servers,          // 서버명 → 억당 원
+      updated: updated,
+      source: 'gamebit.co.kr',
+      debug: req.query.debug ? { httpStatus, cached, len, keys: status ? Object.keys(status).length : 0 } : undefined
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/', (req, res) => res.send('MVP Sise API — GET /api/sise'));
+app.get('/', (req, res) => res.send('MVP Sise API — GET /api/sise?sid=2119'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('listening on ' + PORT));
