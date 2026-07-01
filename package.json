@@ -1,0 +1,12 @@
+{
+  "name": "mvp-sise-api",
+  "version": "1.0.0",
+  "description": "메이플 MVP작 시세 자동수집 API (로아땡 스크래퍼)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "iconv-lite": "^0.6.3"
+  }
+}
