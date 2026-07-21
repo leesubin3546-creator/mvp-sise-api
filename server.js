@@ -70,7 +70,8 @@ app.get('/api/sise', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.send('MVP Sise API — GET /api/sise?sid=2119'));
+// 루트 접속 시 계산기 화면 제공 (API 안내는 /api/sise 참고)
+app.get('/', (req, res) => res.sendFile(__dirname + '/mvp_calculator.html'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('listening on ' + PORT));
