@@ -345,31 +345,55 @@ function calc(){
     const milList=items.filter(x=>x.m>0);
     const bestMil=milList.length?milList.reduce((a,b)=>b.perD<a.perD?b:a):null; // 마일 담당
     const useMil=bestMil && bestMil.perD<bestFull.perF && milBudget>0 && bestMil.milPer>0;
+    // 실물 아이템은 정수 개수만 구매 가능 → 마일리지템은 내림, 잔여 마일은 표시만
     let jeokMil=0,itemsMil=0,milUsed=0;
     if(useMil){
-      itemsMil=milBudget/bestMil.milPer;
-      jeokMil=Math.min(remain,itemsMil*bestMil.jeokD);
-      itemsMil=jeokMil/bestMil.jeokD;
+      itemsMil=Math.floor(Math.min(milBudget/bestMil.milPer, remain/bestMil.jeokD));
+      jeokMil=itemsMil*bestMil.jeokD;
       milUsed=itemsMil*bestMil.milPer;
     }
+    const milOn=useMil&&itemsMil>0;
     const jeokFull=Math.max(0,remain-jeokMil);
-    // 나머지(정가) 실적: 최선 정가템 vs 메소마켓식 중 저렴한 쪽으로 채움
-    let fillPer=bestFull.perF, fillLabel='정가템 · '+bestFull.name, fillCnt=(jeokFull/bestFull.cash).toFixed(1)+'개 · ', fillIsItem=true;
-    if(mesoCostPer!==null && mesoCostPer<fillPer){ fillPer=mesoCostPer; fillLabel='메소마켓식'; fillCnt=''; fillIsItem=false; }
-    const totalNet=(useMil?itemsMil*bestMil.netD:0)+jeokFull/per*fillPer;
-    aucTotal=totalNet; aucCostPer= remain>0?totalNet/remain*per:fillPer;
+    // 나머지 실적: (a) 정가템 올림구매 (b) 메소마켓 전부 (c) 정가템 내림+잔여 메소마켓 중 총비용 최저
+    let fillNet=0,fillJeok=0,fillHtml='',fillIsItem=false;
+    if(jeokFull>0){
+      const no=milOn?['② ','③ ']:['','② '];
+      const cands=[];
+      const cntUp=Math.ceil(jeokFull/bestFull.cash);
+      cands.push({net:cntUp*bestFull.netF,jeok:cntUp*bestFull.cash,item:true,
+        html:`<div class="kv"><span class="lab">${no[0]}정가템 · ${bestFull.name}</span><b>${cntUp}개 · 실적 ${won(cntUp*bestFull.cash)}원</b></div>`});
+      if(mesoCostPer!==null){
+        cands.push({net:jeokFull/per*mesoCostPer,jeok:jeokFull,item:false,
+          html:`<div class="kv"><span class="lab">${no[0]}메소마켓식</span><b>실적 ${won(jeokFull)}원</b></div>`});
+        const cntDn=Math.floor(jeokFull/bestFull.cash);
+        if(cntDn>0){
+          const rem=jeokFull-cntDn*bestFull.cash;
+          cands.push({net:cntDn*bestFull.netF+rem/per*mesoCostPer,jeok:jeokFull,item:true,
+            html:`<div class="kv"><span class="lab">${no[0]}정가템 · ${bestFull.name}</span><b>${cntDn}개 · 실적 ${won(cntDn*bestFull.cash)}원</b></div>
+                  <div class="kv"><span class="lab">${no[1]}잔여분 메소마켓식</span><b>실적 ${won(rem)}원</b></div>`});
+        }
+      }
+      const bestFill=cands.reduce((a,b)=>b.net<a.net?b:a);
+      fillNet=bestFill.net;fillJeok=bestFill.jeok;fillHtml=bestFill.html;fillIsItem=bestFill.item;
+    }
+    const totalNet=(milOn?itemsMil*bestMil.netD:0)+fillNet;
+    const totalJeok=jeokMil+fillJeok;
+    aucTotal=totalNet; aucCostPer= remain>0?totalNet/remain*per:0;
     items.forEach(x=>x.tr.classList.remove('best'));
-    if(useMil)bestMil.tr.classList.add('best');
+    if(milOn)bestMil.tr.classList.add('best');
     if(fillIsItem)bestFull.tr.classList.add('best');
-    const milLine=useMil
-      ? `<div class="kv"><span class="lab">① 마일리지템 · ${bestMil.name}</span><b>${itemsMil.toFixed(1)}개 · 실적 ${won(jeokMil)}원</b></div>
-         <div class="kv"><span class="lab">　└ 사용 마일리지 (보유 ${won(num('mileage'))}+적립 ${won(earnedMil)})</span><b>${won(milUsed)}</b></div>`
+    const milLeft=milBudget-milUsed;
+    const milLine=milOn
+      ? `<div class="kv"><span class="lab">① 마일리지템 · ${bestMil.name}</span><b>${itemsMil}개 · 실적 ${won(jeokMil)}원</b></div>
+         <div class="kv"><span class="lab">　└ 사용 마일리지 (보유 ${won(num('mileage'))}+적립 ${won(earnedMil)}${milLeft>0.5?` · 잔여 ${won(milLeft)}`:''})</span><b>${won(milUsed)}</b></div>`
       : '';
+    const overJeok=totalJeok-remain;
     aucHtml=`
       <div class="kv"><span class="lab">최적 조합 (경매장·메소마켓 종합)</span><b><span class="badge">BEST</span></b></div>
       ${milLine}
-      <div class="kv"><span class="lab">${useMil?'② ':''}${fillLabel}</span><b>${fillCnt}실적 ${won(jeokFull)}원</b></div>
-      <div class="kv"><span class="lab">남은 실적 다 채우는 총 실부담 ${rateTxt(totalNet,remain)}</span><b class="${totalNet<0?'pos':'neg'}">${won(totalNet)} 원</b></div>`;
+      ${fillHtml}
+      ${overJeok>0.5?`<div class="hint">※ 정수 개수 구매로 목표보다 실적 ${won(overJeok)}원 초과 달성 (초과분 비용 포함됨)</div>`:''}
+      <div class="kv"><span class="lab">남은 실적 다 채우는 총 실부담 ${rateTxt(totalNet,totalJeok)}</span><b class="${totalNet<0?'pos':'neg'}">${won(totalNet)} 원</b></div>`;
   } else aucHtml='<div class="hint">아이템의 캐시가격·판매가를 입력해줘.</div>';
   document.getElementById('auctionResult').innerHTML=aucHtml;
 
