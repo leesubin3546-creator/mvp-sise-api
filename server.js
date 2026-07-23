@@ -104,5 +104,8 @@ app.get('/api/auction-price', (req, res) => {
 // 루트 접속 시 계산기 화면 제공 (API 안내는 /api/sise 참고)
 app.get('/', (req, res) => res.sendFile(__dirname + '/mvp_calculator.html'));
 
+// 유저스크립트 파일 (계산기 안내문의 다운로드 링크 대상)
+app.use('/userscript', express.static(__dirname + '/userscript'));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('listening on ' + PORT));
