@@ -348,17 +348,36 @@ function setFetchButtonsDisabled(disabled){
   tbody.querySelectorAll('.i-fetch').forEach(b=>b.disabled=disabled);
 }
 
-// 아이템 하나에 대해 옥션 구매/시세 탭을 열고 백엔드 값을 폴링, 판매가에 반영하는 Promise.
-// closeTabs=true면 완료(성공/타임아웃) 후 열어둔 탭을 자동으로 닫음(전체 시세 확인용).
-function fetchOnePrice(name,base,tr,{timeoutMs=12000,closeTabs=false,progress=''}={}){
+// 옥션 탭을 매번 새로 열지 않고, 열려있는 창이 있으면 그 안에서 검색어만 바꿔치기(location 이동)함.
+// (opener가 자기가 연 창을 cross-origin으로 navigate/close하는 건 브라우저가 항상 허용함)
+function openOrReuseTab(win,url){
+  if(win&&!win.closed){ win.location.href=url; return win; }
+  return window.open(url,'_blank');
+}
+function closeReuseWins(wins){
+  try{wins.buy&&!wins.buy.closed&&wins.buy.close();}catch(e){}
+  try{wins.sise&&!wins.sise.closed&&wins.sise.close();}catch(e){}
+  wins.buy=null;wins.sise=null;
+}
+
+// 아이템 하나에 대해 옥션 구매/시세 탭을 열고(또는 재사용) 백엔드 값을 폴링, 판매가에 반영하는 Promise.
+// wins가 주어지면 그 참조를 재사용/갱신하고 호출자가 나중에 직접 닫음(전체 시세 확인용).
+// wins가 없으면 이 호출이 알아서 열고, 끝나면(성공/타임아웃 모두) 자동으로 닫음(단일 🔍 버튼용).
+function fetchOnePrice(name,base,tr,{timeoutMs=12000,progress='',wins=null}={}){
   return new Promise(resolve=>{
     if(!name){resolve(false);return;}
     const kw=encodeURIComponent(name);
-    const wBuy=window.open(`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`,'_blank');
-    const wSise=window.open(`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`,'_blank');
+    const buyUrl=`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`;
+    const siseUrl=`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`;
+    const ownWins=wins||{buy:null,sise:null};
+    ownWins.buy=openOrReuseTab(ownWins.buy,buyUrl);
+    ownWins.sise=openOrReuseTab(ownWins.sise,siseUrl);
     const startedAt=Date.now();
-    const closePopups=()=>{ if(closeTabs){ try{wBuy&&wBuy.close();}catch(e){} try{wSise&&wSise.close();}catch(e){} } };
-    const finish=(result)=>{ clearInterval(timer); closePopups(); resolve(result); };
+    const finish=(result)=>{
+      clearInterval(timer);
+      if(!wins)closeReuseWins(ownWins); // 재사용 안 하는 단발성 호출이면 바로 정리
+      resolve(result);
+    };
     const timer=setInterval(async()=>{
       const elapsed=Date.now()-startedAt;
       try{
@@ -396,7 +415,7 @@ function fetchAuctionPrice(tr){
       setFetchStatus(`⏳ 확장 설치 확인 중...`);
       if(!(await ensureUserscriptOrGuide(base)))return;
       setFetchStatus(`⏳ "${name}" 새 탭 2개에서 옥션 확인 중...`);
-      await fetchOnePrice(name,base,tr,{timeoutMs:12000,closeTabs:false});
+      await fetchOnePrice(name,base,tr,{timeoutMs:12000});
     }finally{fetchBusy=false;setFetchButtonsDisabled(false);}
   })();
 }
@@ -407,6 +426,7 @@ document.getElementById('fetchAllBtn').onclick=async()=>{
   const rows=[...tbody.querySelectorAll('tr')].filter(tr=>(tr.querySelector('.i-name').value||'').trim());
   if(!rows.length){setFetchStatus('⚠ 아이템이 없어.');return;}
   fetchBusy=true;setFetchButtonsDisabled(true);
+  const wins={buy:null,sise:null}; // 옥션 탭 2개를 전체 루프 동안 재사용(매번 새로 안 엶)
   try{
     warmBackend(base);
     setFetchStatus('⏳ 확장 설치 확인 중...');
@@ -416,10 +436,10 @@ document.getElementById('fetchAllBtn').onclick=async()=>{
       const name=(tr.querySelector('.i-name').value||'').trim();
       const progress=`(${i+1}/${rows.length}) `;
       setFetchStatus(`${progress}⏳ "${name}" 확인 중...`);
-      await fetchOnePrice(name,base,tr,{timeoutMs:10000,closeTabs:true,progress});
+      await fetchOnePrice(name,base,tr,{timeoutMs:10000,progress,wins});
     }
     setFetchStatus(`✅ 전체 ${rows.length}개 아이템 시세 확인 완료`);
-  }finally{fetchBusy=false;setFetchButtonsDisabled(false);}
+  }finally{closeReuseWins(wins);fetchBusy=false;setFetchButtonsDisabled(false);}
 };
 // 페이지 열자마자 한 번 조용히 확인(배너는 미설치일 때만 뜸)
 (function(){
