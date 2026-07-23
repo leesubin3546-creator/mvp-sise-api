@@ -78,6 +78,10 @@
   .mini{font-size:11.5px;color:var(--sub);text-align:center;margin:20px 0;line-height:1.7}
   .tag{display:inline-block;font-size:11px;background:#f0e2c6;color:var(--accent-d);
     padding:2px 8px;border-radius:6px;margin-left:6px;font-weight:600}
+  .mini-btn{background:var(--card2);border:1.5px solid var(--line2);border-radius:8px;
+    padding:5px 7px;font-size:13px;cursor:pointer;line-height:1}
+  .mini-btn:hover{border-color:var(--accent)}
+  #fetchPriceStatus{min-height:1.4em}
 </style>
 </head>
 <body>
@@ -183,7 +187,7 @@
       <table id="itemTable">
         <thead>
           <tr>
-            <th>아이템</th><th>캐시가격</th><th>마일리지%<br>(실적↓)</th><th>판매가<br>(억메소)</th>
+            <th>아이템</th><th>캐시가격</th><th>마일리지%<br>(실적↓)</th><th>판매가<br>(억메소)</th><th>시세</th>
             <th>본전가<br>(억메소)</th><th>1만원당<br>손해</th><th></th>
           </tr>
         </thead>
@@ -194,8 +198,11 @@
       </div>
       <div class="hint">
         여러 아이템을 넣으면 <b>자동으로 최적 조합</b>을 짜줘: 마일리지(보유+엠작적립)는 <b>“마일 할인 시 손해율 최저” 아이템</b>에 몰고, 나머지 실적은 <b>“정가 손해율 최저” 아이템</b>으로 채워.<br>
-        <b>마일리지%</b>: 마일로 깎이는 비율(플래티넘 카르마의 가위 등 30). ⚠ 할인분은 넥슨캐시로 안 나가 <b>실적도 안 쌓임</b>. <b>본전가</b> = 손해 0 되는 최소 판매가(마일 적용 기준).
+        <b>마일리지%</b>: 마일로 깎이는 비율(플래티넘 카르마의 가위 등 30). ⚠ 할인분은 넥슨캐시로 안 나가 <b>실적도 안 쌓임</b>. <b>본전가</b> = 손해 0 되는 최소 판매가(마일 적용 기준).<br>
+        <b>🔍 시세</b> 버튼: 옥션 구매·시세 탭을 새 창으로 열고, 개당 실시간 최저가와 최근 판매 시세 중 <b>더 싼 값</b>을 판매가 칸에 자동으로 채워줘. 자동 반영에는
+        <a href="userscript/auction-price-reporter.user.js" target="_blank">유저스크립트</a> 설치가 필요해(Tampermonkey 등). 옥션은 넥슨 OTP 로그인 필요 — 이 스크립트는 로그인을 대신하지 않고, 사용자가 이미 로그인한 화면의 가격만 읽어서 보내.
       </div>
+      <div class="hint" id="fetchPriceStatus"></div>
       <div class="result" id="auctionResult"></div>
     </div>
   </div>
@@ -262,14 +269,58 @@ function addRow(it){
     <td><input class="i-cash" inputmode="numeric" value="${it?it.cash:0}" style="width:70px"></td>
     <td><input class="i-disc" inputmode="numeric" value="${it?it.disc:0}" style="width:48px"></td>
     <td><input class="i-sell" inputmode="decimal" value="${it?it.sell:0}" style="width:64px"></td>
+    <td><button type="button" class="mini-btn i-fetch" title="옥션 최저가·최근시세 가져오기">🔍</button></td>
     <td class="i-be">-</td><td class="i-per">-</td>
     <td><span class="del" style="cursor:pointer;color:var(--bad);font-weight:700">✕</span></td>`;
   tr.querySelector('.del').onclick=()=>{tr.remove();calc();};
+  tr.querySelector('.i-fetch').onclick=()=>fetchAuctionPrice(tr);
   tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',calc));
   tbody.appendChild(tr);
 }
 PRESET.forEach(addRow);
 document.getElementById('addRow').onclick=()=>{addRow(null);};
+
+// ---- 옥션 시세 자동 가져오기 ----
+// 옥션은 넥슨 OTP 로그인이 있어야 접근 가능해서, 새 창을 열어 "사용자 본인 로그인 세션"으로
+// 직접 조회하게 하고, userscript/auction-price-reporter.user.js가 화면의 가격을 읽어
+// 백엔드(/api/auction-price)로 보고하면 여기서 폴링해 판매가 칸에 채워넣음.
+function setFetchStatus(msg){document.getElementById('fetchPriceStatus').textContent=msg;}
+function fetchAuctionPrice(tr){
+  const name=(tr.querySelector('.i-name').value||'').trim();
+  if(!name){setFetchStatus('⚠ 아이템 이름을 먼저 입력해줘.');return;}
+  const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
+  if(!base){setFetchStatus('⚠ 위쪽 "자동수집 백엔드 URL"을 먼저 입력해줘.');return;}
+  const kw=encodeURIComponent(name);
+  window.open(`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`,'_blank');
+  window.open(`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`,'_blank');
+  setFetchStatus(`⏳ "${name}" 새 탭 2개에서 옥션 확인 중... (유저스크립트 설치돼 있으면 자동 반영, 최대 30초 대기)`);
+  pollAuctionPrice(name,base,tr);
+}
+function pollAuctionPrice(name,base,tr){
+  let tries=0;const maxTries=20;
+  const timer=setInterval(async()=>{
+    tries++;
+    try{
+      const r=await fetch(`${base}/api/auction-price?item=${encodeURIComponent(name)}`);
+      const d=await r.json();
+      if(d.found&&d.best){
+        clearInterval(timer);
+        const eok=d.best/1e8;
+        tr.querySelector('.i-sell').value=eok.toFixed(4);
+        calc();
+        const parts=[];
+        if(d.buy)parts.push(`구매 최저가 ${(d.buy.price/1e8).toFixed(2)}억`);
+        if(d.sise)parts.push(`최근 시세 ${(d.sise.price/1e8).toFixed(2)}억`);
+        setFetchStatus(`✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (${parts.join(' · ')} 중 낮은 값)`);
+        return;
+      }
+    }catch(e){}
+    if(tries>=maxTries){
+      clearInterval(timer);
+      setFetchStatus(`⏱ "${name}" 시간 초과 — 새 탭에서 로그인/검색 결과 떴는지 확인하고 다시 눌러줘. (유저스크립트 미설치면 자동 반영 안 됨)`);
+    }
+  },1500);
+}
 
 // 서버별 억당 현금 시세 (기준: 2026-07-01) · 일반=게임비트, 챌린저스=로아땡
 // sid=게임비트 백엔드 자동수집용, url=현재 시세 확인 링크

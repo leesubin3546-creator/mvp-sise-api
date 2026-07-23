@@ -5,11 +5,14 @@
 
 const express = require('express');
 const app = express();
+app.use(express.json());
 
-// CORS 허용 (정적 HTML 계산기에서 호출 가능하게)
+// CORS 허용 (정적 HTML 계산기 + 옥션 페이지의 유저스크립트에서 호출 가능하게)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
@@ -68,6 +71,34 @@ app.get('/api/sise', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ---- 경매장 시세 릴레이 ----
+// 옥션 웹은 넥슨 OTP 로그인 세션이 있어야 접근 가능해서 서버가 대신 조회할 수 없음.
+// 대신 유저스크립트(userscript/auction-price-reporter.user.js)가 사용자 브라우저의
+// 로그인 세션으로 옥션 페이지를 볼 때 화면에 보이는 가격을 읽어 여기로 보고하면,
+// 계산기가 그 값을 폴링해서 가져다 씀. 메모리 저장이라 서버 재시작(무료티어 슬립 등) 시 초기화됨.
+const auctionPrices = {}; // { [정규화된 아이템명]: { buy:{price,ts,url}, sise:{price,ts,url} } }
+const normItem = (s) => (s || '').trim().replace(/\s+/g, ' ');
+
+app.post('/api/auction-price', (req, res) => {
+  const { item, kind, price, url } = req.body || {};
+  if (!item || !['buy', 'sise'].includes(kind) || !(price > 0)) {
+    return res.status(400).json({ error: 'item, kind(buy|sise), price 필요' });
+  }
+  const key = normItem(item);
+  if (!auctionPrices[key]) auctionPrices[key] = {};
+  auctionPrices[key][kind] = { price: Math.round(price), ts: Date.now(), url: url || null };
+  res.json({ ok: true, item: key, kind });
+});
+
+app.get('/api/auction-price', (req, res) => {
+  const key = normItem(req.query.item);
+  const entry = auctionPrices[key];
+  if (!entry) return res.json({ item: key, found: false });
+  const candidates = [entry.buy, entry.sise].filter(Boolean);
+  const best = candidates.length ? Math.min(...candidates.map(c => c.price)) : null;
+  res.json({ item: key, found: true, buy: entry.buy || null, sise: entry.sise || null, best });
 });
 
 // 루트 접속 시 계산기 화면 제공 (API 안내는 /api/sise 참고)
