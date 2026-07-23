@@ -80,6 +80,20 @@ app.get('/api/sise', async (req, res) => {
 // 계산기가 그 값을 폴링해서 가져다 씀. 메모리 저장이라 서버 재시작(무료티어 슬립 등) 시 초기화됨.
 const auctionPrices = {}; // { [정규화된 아이템명]: { buy:{price,ts,url}, sise:{price,ts,url} } }
 const normItem = (s) => (s || '').trim().replace(/\s+/g, ' ');
+let lastUserscriptSeen = 0;
+
+// 콜드스타트를 미리 깨우기 위한 가벼운 핑 (외부 요청 없음)
+app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// 유저스크립트가 살아있는지(설치/동작 여부) 진단용. 매 페이지 로드마다 유저스크립트가 호출.
+app.post('/api/userscript-ping', (req, res) => {
+  lastUserscriptSeen = Date.now();
+  res.json({ ok: true });
+});
+app.get('/api/userscript-ping', (req, res) => {
+  const ageMs = lastUserscriptSeen ? Date.now() - lastUserscriptSeen : null;
+  res.json({ seenRecently: ageMs !== null && ageMs < 5 * 60 * 1000, ageMs });
+});
 
 app.post('/api/auction-price', (req, res) => {
   const { item, kind, price, url } = req.body || {};

@@ -17,6 +17,17 @@
   // MVP 계산기 백엔드 주소. 계산기를 다른 곳에 배포했다면 이 값만 바꾸면 됨.
   const BACKEND = 'https://mvp-sise-api.onrender.com';
 
+  // 이 페이지를 봤다는 것 자체를 백엔드에 알림(설치/동작 여부 진단용).
+  // 아이템 검색 결과가 없어도, 콜드스타트 중이어도 항상 시도함.
+  function pingBackendAlive() {
+    GM_xmlhttpRequest({
+      method: 'POST',
+      url: BACKEND + '/api/userscript-ping',
+      onload: () => {}, onerror: () => {}
+    });
+  }
+  pingBackendAlive();
+
   const params = new URLSearchParams(location.search);
   const keyword = (params.get('keyword') || '').trim();
   if (!keyword) return;
@@ -52,15 +63,28 @@
     return parseKoreanMeso(seg.slice(0, end + 2));
   }
 
-  function report(price) {
+  // Render 무료티어 콜드스타트 대비: 실패하면 몇 초 간격으로 재시도(최대 ~50초)
+  function report(price, attempt) {
+    attempt = attempt || 0;
     const body = JSON.stringify({ item: keyword, kind, price, url: location.href });
     GM_xmlhttpRequest({
       method: 'POST',
       url: BACKEND + '/api/auction-price',
       headers: { 'Content-Type': 'application/json' },
       data: body,
-      onload: () => toast(`MVP 계산기로 전송됨: ${keyword} (${kind === 'buy' ? '구매 최저가' : '최근 시세'}) ${(price / 1e8).toFixed(2)}억`),
-      onerror: () => toast('MVP 계산기 전송 실패 (백엔드 접속 불가)')
+      onload: (resp) => {
+        if (resp.status >= 200 && resp.status < 300) {
+          toast(`MVP 계산기로 전송됨: ${keyword} (${kind === 'buy' ? '구매 최저가' : '최근 시세'}) ${(price / 1e8).toFixed(2)}억`);
+        } else if (attempt < 8) {
+          setTimeout(() => report(price, attempt + 1), 6000);
+        } else {
+          toast('MVP 계산기 전송 실패 (백엔드 응답 오류)');
+        }
+      },
+      onerror: () => {
+        if (attempt < 8) setTimeout(() => report(price, attempt + 1), 6000);
+        else toast('MVP 계산기 전송 실패 (백엔드 접속 불가, 콜드스타트가 오래 걸리는 듯)');
+      }
     });
   }
 
@@ -80,7 +104,7 @@
   }
 
   let tries = 0;
-  const maxTries = 20; // 500ms * 20 = 10초
+  const maxTries = 40; // 500ms * 40 = 20초 (검색 결과 로딩이 느릴 수 있어 넉넉히)
   const timer = setInterval(() => {
     tries++;
     const price = findFirstPerUnitPrice();

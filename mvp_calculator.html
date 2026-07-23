@@ -195,6 +195,7 @@
       </table>
       <div class="btnrow">
         <button class="btn ghost" id="addRow">＋ 아이템 추가</button>
+        <button class="btn ghost" id="fetchAllBtn">🔍 전체 시세 확인</button>
       </div>
       <div class="hint">
         여러 아이템을 넣으면 <b>자동으로 최적 조합</b>을 짜줘: 마일리지(보유+엠작적립)는 <b>“마일 할인 시 손해율 최저” 아이템</b>에 몰고, 나머지 실적은 <b>“정가 손해율 최저” 아이템</b>으로 채워.<br>
@@ -284,43 +285,92 @@ document.getElementById('addRow').onclick=()=>{addRow(null);};
 // 옥션은 넥슨 OTP 로그인이 있어야 접근 가능해서, 새 창을 열어 "사용자 본인 로그인 세션"으로
 // 직접 조회하게 하고, userscript/auction-price-reporter.user.js가 화면의 가격을 읽어
 // 백엔드(/api/auction-price)로 보고하면 여기서 폴링해 판매가 칸에 채워넣음.
+// Render 무료티어는 15분 유휴 후 슬립하므로, 첫 호출은 콜드스타트로 최대 50초 정도 걸릴 수 있음
+// → 백그라운드에서 미리 깨워두고(warmBackend), 타임아웃도 넉넉히 잡음.
 function setFetchStatus(msg){document.getElementById('fetchPriceStatus').textContent=msg;}
+let backendWarmedAt=0;
+function warmBackend(base){
+  const now=Date.now();
+  if(now-backendWarmedAt<20000)return; // 20초 내 이미 깨웠으면 재호출 안 함
+  backendWarmedAt=now;
+  fetch(`${base}/api/ping`).catch(()=>{});
+}
+
+// 아이템 하나에 대해 옥션 구매/시세 탭을 열고 백엔드 값을 폴링, 판매가에 반영하는 Promise.
+// closeTabs=true면 완료(성공/타임아웃) 후 열어둔 탭을 자동으로 닫음(전체 시세 확인용).
+function fetchOnePrice(name,base,tr,{timeoutMs=45000,closeTabs=false,progress=''}={}){
+  return new Promise(resolve=>{
+    if(!name){resolve(false);return;}
+    const kw=encodeURIComponent(name);
+    const wBuy=window.open(`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`,'_blank');
+    const wSise=window.open(`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`,'_blank');
+    warmBackend(base);
+    const startedAt=Date.now();
+    const closePopups=()=>{ if(closeTabs){ try{wBuy&&wBuy.close();}catch(e){} try{wSise&&wSise.close();}catch(e){} } };
+    const timer=setInterval(async()=>{
+      const elapsed=Date.now()-startedAt;
+      try{
+        const r=await fetch(`${base}/api/auction-price?item=${encodeURIComponent(name)}`);
+        const d=await r.json();
+        if(d.found&&d.best){
+          clearInterval(timer);
+          const eok=d.best/1e8;
+          tr.querySelector('.i-sell').value=eok.toFixed(4);
+          calc();
+          const parts=[];
+          if(d.buy)parts.push(`구매 최저가 ${(d.buy.price/1e8).toFixed(2)}억`);
+          if(d.sise)parts.push(`최근 시세 ${(d.sise.price/1e8).toFixed(2)}억`);
+          setFetchStatus(`${progress}✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (${parts.join(' · ')} 중 낮은 값)`);
+          closePopups();
+          resolve(true);
+          return;
+        }
+      }catch(e){}
+      if(elapsed>=timeoutMs){
+        clearInterval(timer);
+        checkUserscriptSeen(base).then(seen=>{
+          const why=seen
+            ? `유저스크립트는 동작 중인데 이 아이템은 옥션에 매물/거래 기록이 없는 것 같아.`
+            : `유저스크립트가 감지되지 않았어. 설치했는지 확인해줘 (아래 링크).`;
+          setFetchStatus(`${progress}⏱ "${name}" 시간 초과 — ${why}`);
+        });
+        closePopups();
+        resolve(false);
+      }
+    },1500);
+  });
+}
 function fetchAuctionPrice(tr){
   const name=(tr.querySelector('.i-name').value||'').trim();
   if(!name){setFetchStatus('⚠ 아이템 이름을 먼저 입력해줘.');return;}
   const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
   if(!base){setFetchStatus('⚠ 위쪽 "자동수집 백엔드 URL"을 먼저 입력해줘.');return;}
-  const kw=encodeURIComponent(name);
-  window.open(`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`,'_blank');
-  window.open(`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`,'_blank');
-  setFetchStatus(`⏳ "${name}" 새 탭 2개에서 옥션 확인 중... (유저스크립트 설치돼 있으면 자동 반영, 최대 30초 대기)`);
-  pollAuctionPrice(name,base,tr);
+  setFetchStatus(`⏳ "${name}" 새 탭 2개에서 옥션 확인 중... (첫 호출은 서버 콜드스타트로 최대 50초 걸릴 수 있어)`);
+  fetchOnePrice(name,base,tr,{timeoutMs:45000,closeTabs:false});
 }
-function pollAuctionPrice(name,base,tr){
-  let tries=0;const maxTries=20;
-  const timer=setInterval(async()=>{
-    tries++;
-    try{
-      const r=await fetch(`${base}/api/auction-price?item=${encodeURIComponent(name)}`);
-      const d=await r.json();
-      if(d.found&&d.best){
-        clearInterval(timer);
-        const eok=d.best/1e8;
-        tr.querySelector('.i-sell').value=eok.toFixed(4);
-        calc();
-        const parts=[];
-        if(d.buy)parts.push(`구매 최저가 ${(d.buy.price/1e8).toFixed(2)}억`);
-        if(d.sise)parts.push(`최근 시세 ${(d.sise.price/1e8).toFixed(2)}억`);
-        setFetchStatus(`✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (${parts.join(' · ')} 중 낮은 값)`);
-        return;
-      }
-    }catch(e){}
-    if(tries>=maxTries){
-      clearInterval(timer);
-      setFetchStatus(`⏱ "${name}" 시간 초과 — 새 탭에서 로그인/검색 결과 떴는지 확인하고 다시 눌러줘. (유저스크립트 미설치면 자동 반영 안 됨)`);
-    }
-  },1500);
+async function checkUserscriptSeen(base){
+  try{
+    const r=await fetch(`${base}/api/userscript-ping`);
+    const d=await r.json();
+    return !!d.seenRecently;
+  }catch(e){return false;}
 }
+document.getElementById('fetchAllBtn').onclick=async()=>{
+  const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
+  if(!base){setFetchStatus('⚠ 위쪽 "자동수집 백엔드 URL"을 먼저 입력해줘.');return;}
+  const rows=[...tbody.querySelectorAll('tr')].filter(tr=>(tr.querySelector('.i-name').value||'').trim());
+  if(!rows.length){setFetchStatus('⚠ 아이템이 없어.');return;}
+  warmBackend(base);
+  for(let i=0;i<rows.length;i++){
+    const tr=rows[i];
+    const name=(tr.querySelector('.i-name').value||'').trim();
+    const progress=`(${i+1}/${rows.length}) `;
+    setFetchStatus(`${progress}⏳ "${name}" 확인 중...`);
+    // 첫 아이템은 콜드스타트 대비로 넉넉히, 이후엔 서버가 이미 깨어있으니 짧게
+    await fetchOnePrice(name,base,tr,{timeoutMs:i===0?45000:15000,closeTabs:true,progress});
+  }
+  setFetchStatus(`✅ 전체 ${rows.length}개 아이템 시세 확인 완료`);
+};
 
 // 서버별 억당 현금 시세 (기준: 2026-07-01) · 일반=게임비트, 챌린저스=로아땡
 // sid=게임비트 백엔드 자동수집용, url=현재 시세 확인 링크
