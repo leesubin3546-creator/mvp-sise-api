@@ -241,9 +241,18 @@ document.querySelectorAll('.tab').forEach(t=>{
   };
 });
 
+// 2026-07-23 캐시아이템 업데이트 기준 · 옥션 개당 최저가(스카니아) 반영
 const PRESET=[
-  {name:'플래티넘 카르마의 가위',cash:5900,disc:30,sell:1.85},
-  {name:'블론드 헤어쿠폰',cash:30000,disc:0,sell:12.5},
+  {name:'부티크 기프트',cash:3300,disc:0,sell:1.7444},
+  {name:'컬러링 프리즘 프로',cash:25000,disc:30,sell:12.2222},
+  {name:'무기 이펙트 프리즘',cash:15000,disc:30,sell:8.7777},
+  {name:'마스터피스',cash:900,disc:0,sell:0.07},
+  {name:'프리미엄 마스터피스',cash:1900,disc:0,sell:0.70},
+  {name:'메이플 로얄 스타일',cash:2200,disc:0,sell:1.15},
+  {name:'상반기 BEST 프리미엄 헤어 쿠폰',cash:5500,disc:30,sell:2.89},
+  {name:'상반기 BEST 프리미엄 성형 쿠폰',cash:3500,disc:30,sell:1.8399},
+  {name:'프리미엄 헤어 쿠폰',cash:5500,disc:30,sell:3.0999},
+  {name:'프리미엄 성형 쿠폰',cash:3500,disc:30,sell:1.7669},
 ];
 const tbody=document.querySelector('#itemTable tbody');
 function addRow(it){
