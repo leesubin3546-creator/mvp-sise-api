@@ -63,7 +63,7 @@
     return parseKoreanMeso(seg.slice(0, end + 2));
   }
 
-  // Render 무료티어 콜드스타트 대비: 실패하면 몇 초 간격으로 재시도(최대 ~50초)
+  // 백엔드가 막 깨어나는 중일 수 있어 실패하면 몇 번 재시도(최대 4번, ~12초)
   function report(price, attempt) {
     attempt = attempt || 0;
     const body = JSON.stringify({ item: keyword, kind, price, url: location.href });
@@ -75,15 +75,15 @@
       onload: (resp) => {
         if (resp.status >= 200 && resp.status < 300) {
           toast(`MVP 계산기로 전송됨: ${keyword} (${kind === 'buy' ? '구매 최저가' : '최근 시세'}) ${(price / 1e8).toFixed(2)}억`);
-        } else if (attempt < 8) {
-          setTimeout(() => report(price, attempt + 1), 6000);
+        } else if (attempt < 4) {
+          setTimeout(() => report(price, attempt + 1), 3000);
         } else {
           toast('MVP 계산기 전송 실패 (백엔드 응답 오류)');
         }
       },
       onerror: () => {
-        if (attempt < 8) setTimeout(() => report(price, attempt + 1), 6000);
-        else toast('MVP 계산기 전송 실패 (백엔드 접속 불가, 콜드스타트가 오래 걸리는 듯)');
+        if (attempt < 4) setTimeout(() => report(price, attempt + 1), 3000);
+        else toast('MVP 계산기 전송 실패 (백엔드 접속 불가)');
       }
     });
   }
@@ -104,7 +104,7 @@
   }
 
   let tries = 0;
-  const maxTries = 40; // 500ms * 40 = 20초 (검색 결과 로딩이 느릴 수 있어 넉넉히)
+  const maxTries = 20; // 500ms * 20 = 10초
   const timer = setInterval(() => {
     tries++;
     const price = findFirstPerUnitPrice();

@@ -82,6 +82,10 @@
     padding:5px 7px;font-size:13px;cursor:pointer;line-height:1}
   .mini-btn:hover{border-color:var(--accent)}
   #fetchPriceStatus{min-height:1.4em}
+  .banner-warn{background:#fbeee0;border-left:4px solid var(--warn);border-radius:8px;
+    padding:11px 13px;font-size:12.5px;color:#6f5230;margin:0 0 14px;line-height:1.65}
+  .banner-warn .btnrow{margin-top:9px}
+  .banner-warn .btn{padding:8px 12px;font-size:12.5px}
 </style>
 </head>
 <body>
@@ -184,6 +188,7 @@
           <div class="hint">넥슨캐시 결제액의 5% 적립(기본). 엠작 중 자동 적립분 반영</div>
         </div>
       </div>
+      <div class="banner-warn" id="userscriptBanner" style="display:none"></div>
       <table id="itemTable">
         <thead>
           <tr>
@@ -285,8 +290,8 @@ document.getElementById('addRow').onclick=()=>{addRow(null);};
 // 옥션은 넥슨 OTP 로그인이 있어야 접근 가능해서, 새 창을 열어 "사용자 본인 로그인 세션"으로
 // 직접 조회하게 하고, userscript/auction-price-reporter.user.js가 화면의 가격을 읽어
 // 백엔드(/api/auction-price)로 보고하면 여기서 폴링해 판매가 칸에 채워넣음.
-// Render 무료티어는 15분 유휴 후 슬립하므로, 첫 호출은 콜드스타트로 최대 50초 정도 걸릴 수 있음
-// → 백그라운드에서 미리 깨워두고(warmBackend), 타임아웃도 넉넉히 잡음.
+// 유저스크립트가 아예 설치 안 됐으면 매 아이템이 100% 타임아웃되므로, 초반에 설치 여부를
+// 한 번 확인해서 없으면 바로 중단함 (여러 아이템을 순서대로 끝까지 기다리는 낭비 방지).
 function setFetchStatus(msg){document.getElementById('fetchPriceStatus').textContent=msg;}
 let backendWarmedAt=0;
 function warmBackend(base){
@@ -296,24 +301,70 @@ function warmBackend(base){
   fetch(`${base}/api/ping`).catch(()=>{});
 }
 
+const TAMPERMONKEY_URL='https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo';
+function userscriptFileUrl(){return new URL('userscript/auction-price-reporter.user.js',location.href).href;}
+let userscriptStatus=null; // {seenRecently, ageMs} | null(아직 확인 못함)
+async function refreshUserscriptStatus(base){
+  try{
+    const r=await fetch(`${base}/api/userscript-ping`);
+    userscriptStatus=await r.json();
+  }catch(e){userscriptStatus=null;}
+  renderUserscriptBanner();
+  return userscriptStatus;
+}
+function renderUserscriptBanner(){
+  const el=document.getElementById('userscriptBanner');
+  if(!userscriptStatus||userscriptStatus.ageMs!==null){el.style.display='none';return;}
+  el.innerHTML=`⚠ <b>자동 시세 가져오기가 아직 감지되지 않았어.</b> 🔍 버튼을 눌러도 옥션 탭만 열리고 판매가 칸이 안 채워진다면,
+    Tampermonkey 확장(또는 다른 유저스크립트 매니저)이 설치돼 있는지 확인해줘.
+    <div class="btnrow">
+      <button type="button" class="btn" id="bnInstallTm">1) Tampermonkey 설치</button>
+      <button type="button" class="btn ghost" id="bnInstallUs">2) 유저스크립트 설치</button>
+      <button type="button" class="btn ghost" id="bnRecheck">설치 확인 다시하기</button>
+    </div>`;
+  el.style.display='block';
+  document.getElementById('bnInstallTm').onclick=()=>window.open(TAMPERMONKEY_URL,'_blank');
+  document.getElementById('bnInstallUs').onclick=()=>window.open(userscriptFileUrl(),'_blank');
+  document.getElementById('bnRecheck').onclick=()=>{
+    const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
+    if(base)refreshUserscriptStatus(base);
+  };
+}
+// 확장이 감지 안 되면 옥션 탭을 열지 않고 설치 안내부터 띄움(어차피 100% 실패라 시간 낭비라).
+async function ensureUserscriptOrGuide(base){
+  await refreshUserscriptStatus(base);
+  if(userscriptStatus&&userscriptStatus.ageMs===null){
+    setFetchStatus('⚠ Tampermonkey가 설치 안 된 것 같아 — 설치 페이지와 유저스크립트를 새 탭으로 열었어. 설치 후 "설치 확인 다시하기"를 눌러줘.');
+    window.open(TAMPERMONKEY_URL,'_blank');
+    window.open(userscriptFileUrl(),'_blank');
+    return false;
+  }
+  return true; // 상태 확인 자체가 실패(네트워크 문제 등)해도 일단 진행은 시켜줌
+}
+
+let fetchBusy=false;
+function setFetchButtonsDisabled(disabled){
+  document.getElementById('fetchAllBtn').disabled=disabled;
+  tbody.querySelectorAll('.i-fetch').forEach(b=>b.disabled=disabled);
+}
+
 // 아이템 하나에 대해 옥션 구매/시세 탭을 열고 백엔드 값을 폴링, 판매가에 반영하는 Promise.
 // closeTabs=true면 완료(성공/타임아웃) 후 열어둔 탭을 자동으로 닫음(전체 시세 확인용).
-function fetchOnePrice(name,base,tr,{timeoutMs=45000,closeTabs=false,progress=''}={}){
+function fetchOnePrice(name,base,tr,{timeoutMs=12000,closeTabs=false,progress=''}={}){
   return new Promise(resolve=>{
     if(!name){resolve(false);return;}
     const kw=encodeURIComponent(name);
     const wBuy=window.open(`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`,'_blank');
     const wSise=window.open(`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`,'_blank');
-    warmBackend(base);
     const startedAt=Date.now();
     const closePopups=()=>{ if(closeTabs){ try{wBuy&&wBuy.close();}catch(e){} try{wSise&&wSise.close();}catch(e){} } };
+    const finish=(result)=>{ clearInterval(timer); closePopups(); resolve(result); };
     const timer=setInterval(async()=>{
       const elapsed=Date.now()-startedAt;
       try{
         const r=await fetch(`${base}/api/auction-price?item=${encodeURIComponent(name)}`);
         const d=await r.json();
         if(d.found&&d.best){
-          clearInterval(timer);
           const eok=d.best/1e8;
           tr.querySelector('.i-sell').value=eok.toFixed(4);
           calc();
@@ -321,56 +372,60 @@ function fetchOnePrice(name,base,tr,{timeoutMs=45000,closeTabs=false,progress=''
           if(d.buy)parts.push(`구매 최저가 ${(d.buy.price/1e8).toFixed(2)}억`);
           if(d.sise)parts.push(`최근 시세 ${(d.sise.price/1e8).toFixed(2)}억`);
           setFetchStatus(`${progress}✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (${parts.join(' · ')} 중 낮은 값)`);
-          closePopups();
-          resolve(true);
+          finish(true);
           return;
         }
       }catch(e){}
       if(elapsed>=timeoutMs){
-        clearInterval(timer);
-        checkUserscriptSeen(base).then(seen=>{
-          const why=seen
-            ? `유저스크립트는 동작 중인데 이 아이템은 옥션에 매물/거래 기록이 없는 것 같아.`
-            : `유저스크립트가 감지되지 않았어. 설치했는지 확인해줘 (아래 링크).`;
-          setFetchStatus(`${progress}⏱ "${name}" 시간 초과 — ${why}`);
-        });
-        closePopups();
-        resolve(false);
+        setFetchStatus(`${progress}⏱ "${name}" 매물/거래 기록을 못 찾았어 (시간 초과). 새 탭에서 결과가 떴는지 확인해줘.`);
+        finish(false);
       }
-    },1500);
+    },1000);
   });
 }
 function fetchAuctionPrice(tr){
+  if(fetchBusy){setFetchStatus('⚠ 이미 시세 확인이 진행 중이야. 끝날 때까지 잠깐 기다려줘.');return;}
   const name=(tr.querySelector('.i-name').value||'').trim();
   if(!name){setFetchStatus('⚠ 아이템 이름을 먼저 입력해줘.');return;}
   const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
   if(!base){setFetchStatus('⚠ 위쪽 "자동수집 백엔드 URL"을 먼저 입력해줘.');return;}
-  setFetchStatus(`⏳ "${name}" 새 탭 2개에서 옥션 확인 중... (첫 호출은 서버 콜드스타트로 최대 50초 걸릴 수 있어)`);
-  fetchOnePrice(name,base,tr,{timeoutMs:45000,closeTabs:false});
-}
-async function checkUserscriptSeen(base){
-  try{
-    const r=await fetch(`${base}/api/userscript-ping`);
-    const d=await r.json();
-    return !!d.seenRecently;
-  }catch(e){return false;}
+  (async()=>{
+    fetchBusy=true;setFetchButtonsDisabled(true);
+    try{
+      warmBackend(base);
+      setFetchStatus(`⏳ 확장 설치 확인 중...`);
+      if(!(await ensureUserscriptOrGuide(base)))return;
+      setFetchStatus(`⏳ "${name}" 새 탭 2개에서 옥션 확인 중...`);
+      await fetchOnePrice(name,base,tr,{timeoutMs:12000,closeTabs:false});
+    }finally{fetchBusy=false;setFetchButtonsDisabled(false);}
+  })();
 }
 document.getElementById('fetchAllBtn').onclick=async()=>{
+  if(fetchBusy){setFetchStatus('⚠ 이미 시세 확인이 진행 중이야.');return;}
   const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
   if(!base){setFetchStatus('⚠ 위쪽 "자동수집 백엔드 URL"을 먼저 입력해줘.');return;}
   const rows=[...tbody.querySelectorAll('tr')].filter(tr=>(tr.querySelector('.i-name').value||'').trim());
   if(!rows.length){setFetchStatus('⚠ 아이템이 없어.');return;}
-  warmBackend(base);
-  for(let i=0;i<rows.length;i++){
-    const tr=rows[i];
-    const name=(tr.querySelector('.i-name').value||'').trim();
-    const progress=`(${i+1}/${rows.length}) `;
-    setFetchStatus(`${progress}⏳ "${name}" 확인 중...`);
-    // 첫 아이템은 콜드스타트 대비로 넉넉히, 이후엔 서버가 이미 깨어있으니 짧게
-    await fetchOnePrice(name,base,tr,{timeoutMs:i===0?45000:15000,closeTabs:true,progress});
-  }
-  setFetchStatus(`✅ 전체 ${rows.length}개 아이템 시세 확인 완료`);
+  fetchBusy=true;setFetchButtonsDisabled(true);
+  try{
+    warmBackend(base);
+    setFetchStatus('⏳ 확장 설치 확인 중...');
+    if(!(await ensureUserscriptOrGuide(base)))return;
+    for(let i=0;i<rows.length;i++){
+      const tr=rows[i];
+      const name=(tr.querySelector('.i-name').value||'').trim();
+      const progress=`(${i+1}/${rows.length}) `;
+      setFetchStatus(`${progress}⏳ "${name}" 확인 중...`);
+      await fetchOnePrice(name,base,tr,{timeoutMs:10000,closeTabs:true,progress});
+    }
+    setFetchStatus(`✅ 전체 ${rows.length}개 아이템 시세 확인 완료`);
+  }finally{fetchBusy=false;setFetchButtonsDisabled(false);}
 };
+// 페이지 열자마자 한 번 조용히 확인(배너는 미설치일 때만 뜸)
+(function(){
+  const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
+  if(base)refreshUserscriptStatus(base);
+})();
 
 // 서버별 억당 현금 시세 (기준: 2026-07-01) · 일반=게임비트, 챌린저스=로아땡
 // sid=게임비트 백엔드 자동수집용, url=현재 시세 확인 링크
