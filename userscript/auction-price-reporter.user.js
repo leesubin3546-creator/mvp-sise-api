@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MVP 계산기 - 메이플 옥션 시세 리포터
 // @namespace    mvp-mesocalc
-// @version      1.0.0
+// @version      1.2.0
 // @description  옥션(auction.maplestory.nexon.com) 구매/시세 검색 결과의 개당 최저가·최근 체결가를 읽어서 MVP 계산기 백엔드로 보고합니다. 로그인은 항상 사용자 본인 브라우저 세션을 그대로 사용하며, 이 스크립트가 로그인을 대신하거나 자격 증명을 저장/전송하지 않습니다.
 // @author       -
 // @match        https://auction.maplestory.nexon.com/buy*
@@ -9,6 +9,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      mvp-sise-api.onrender.com
 // @run-at       document-idle
+// @updateURL    https://mvp-sise-api.onrender.com/userscript/auction-price-reporter.user.js
+// @downloadURL  https://mvp-sise-api.onrender.com/userscript/auction-price-reporter.user.js
 // ==/UserScript==
 
 (function () {
