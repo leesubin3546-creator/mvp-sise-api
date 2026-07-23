@@ -206,8 +206,9 @@
       <div class="hint">
         여러 아이템을 넣으면 <b>자동으로 최적 조합</b>을 짜줘: 마일리지(보유+엠작적립)는 <b>“마일 할인 시 손해율 최저” 아이템</b>에 몰고, 나머지 실적은 <b>“정가 손해율 최저” 아이템</b>으로 채워.<br>
         <b>마일리지%</b>: 마일로 깎이는 비율(플래티넘 카르마의 가위 등 30). ⚠ 할인분은 넥슨캐시로 안 나가 <b>실적도 안 쌓임</b>. <b>본전가</b> = 손해 0 되는 최소 판매가(마일 적용 기준).<br>
-        <b>🔍 시세</b> 버튼: 옥션 구매·시세 탭 2개를 열고(한 번 열리면 계속 재사용, 계속 새로 열리지 않음), 개당 실시간 최저가와 최근 판매 시세 중 <b>더 싼 값</b>을 판매가 칸에 자동으로 채워줘. 자동 반영에는
-        <a href="userscript/auction-price-reporter.user.js" target="_blank">유저스크립트</a> 설치가 필요해(Tampermonkey 등). 옥션은 넥슨 OTP 로그인 필요 — 이 스크립트는 로그인을 대신하지 않고, 사용자가 이미 로그인한 화면의 가격만 읽어서 보내. <b>열린 옥션 탭에서 로그인이 안 돼 있으면</b> 검색 결과 자체가 안 떠서 판매가가 안 채워지니, 먼저 그 탭에서 로그인해줘. 다 쓰면 <b>🗙 옥션 탭 닫기</b>로 정리할 수 있어.
+        <b>🔍 시세</b> 버튼: 옥션 구매 탭 1개를 계속 재사용하면서 개당 실시간 최저가(구매 최저가)를 판매가 칸에 자동으로 채워줘.
+        (최근 거래 시세는 안 봄 — 최저가만으로 충분해서 뺐고, 탭도 하나만 써서 넥슨이 "다른 환경에서 접속 감지"로 세션을 끊어버리는 문제도 같이 해결됨). 자동 반영에는
+        <a href="userscript/auction-price-reporter.user.js" target="_blank">유저스크립트</a> 설치가 필요해(Tampermonkey 등). 옥션은 넥슨 OTP 로그인 필요 — 이 스크립트는 로그인을 대신하지 않고, 사용자가 이미 로그인한 화면의 가격만 읽어서 보내. <b>열린 옥션 탭에서 로그인이 안 돼 있으면</b> 검색 결과 자체가 안 떠서 판매가가 안 채워지니, 먼저 그 탭에서 로그인해줘. <b>🗙 옥션 탭 닫기</b>는 전체 시세 확인 도중에도 언제든 눌러서 정리할 수 있어.
       </div>
       <div class="hint" id="fetchPriceStatus"></div>
       <div class="result" id="auctionResult"></div>
@@ -276,7 +277,7 @@ function addRow(it){
     <td><input class="i-cash" inputmode="numeric" value="${it?it.cash:0}" style="width:70px"></td>
     <td><input class="i-disc" inputmode="numeric" value="${it?it.disc:0}" style="width:48px"></td>
     <td><input class="i-sell" inputmode="decimal" value="${it?it.sell:0}" style="width:64px"></td>
-    <td><button type="button" class="mini-btn i-fetch" title="옥션 최저가·최근시세 가져오기">🔍</button></td>
+    <td><button type="button" class="mini-btn i-fetch" title="옥션 구매 최저가 가져오기">🔍</button></td>
     <td class="i-be">-</td><td class="i-per">-</td>
     <td><span class="del" style="cursor:pointer;color:var(--bad);font-weight:700">✕</span></td>`;
   tr.querySelector('.del').onclick=()=>{tr.remove();calc();};
@@ -349,75 +350,75 @@ async function checkUserscriptStatusSoft(base){
 let fetchBusy=false;
 function setFetchButtonsDisabled(disabled){
   document.getElementById('fetchAllBtn').disabled=disabled;
-  document.getElementById('closeTabsBtn').disabled=disabled;
+  // 닫기 버튼은 일부러 안 잠금 — 전체 시세 확인 도중이라도 언제든 눌러서 옥션 탭을 정리할 수 있어야 함
   tbody.querySelectorAll('.i-fetch').forEach(b=>b.disabled=disabled);
 }
 
-// 옥션 탭 2개(구매/시세)를 계산기 전역에서 계속 재사용함 — 🔍 버튼을 누를 때마다,
-// 또는 "전체 시세 확인" 루프 중 아이템이 바뀔 때마다 매번 새 탭을 열고 닫으면
-// 넥슨 계정이 "다른 곳에서 로그인 중"으로 잘못 감지해 세션이 꼬이는 문제가 있었음.
-// 그래서 탭은 한 쌍만 열어두고 검색어가 바뀔 때 location만 갱신, 명시적으로
-// "옥션 탭 닫기"를 누르거나 페이지를 떠날 때만 닫음.
-let auctionWins={buy:null,sise:null};
+// 옥션 탭은 딱 1개만 열어서 계속 재사용함(구매/buy 검색만 함, 시세/price는 안 봄).
+// 처음엔 buy/price 탭을 2개 동시에 열었는데, 같은 넥슨 계정 세션으로 탭 2개가 동시에 떠 있으면
+// "다른 환경에서 접속이 감지되어 세션이 종료되었습니다"로 옥션이 세션을 강제 종료시키는 문제가 있었음
+// (탭을 새로 여는지 재사용하는지와 무관하게, 동시에 2개가 열려있는 것 자체가 원인).
+let auctionWin=null;
 function openOrReuseTab(win,url){
   if(win&&!win.closed){ win.location.href=url; return win; }
   return window.open(url,'_blank');
 }
-function closeAuctionWins(){
-  try{auctionWins.buy&&!auctionWins.buy.closed&&auctionWins.buy.close();}catch(e){}
-  try{auctionWins.sise&&!auctionWins.sise.closed&&auctionWins.sise.close();}catch(e){}
-  auctionWins.buy=null;auctionWins.sise=null;
+function closeAuctionWin(){
+  try{auctionWin&&!auctionWin.closed&&auctionWin.close();}catch(e){}
+  auctionWin=null;
 }
-window.addEventListener('beforeunload',()=>{try{closeAuctionWins();}catch(e){}});
+window.addEventListener('beforeunload',()=>{try{closeAuctionWin();}catch(e){}});
 
-// 아이템 하나에 대해 옥션 구매/시세 탭을 열고(또는 재사용) 백엔드 값을 폴링, 판매가에 반영.
-// settleMs: 탭을 열거나 검색어를 바꾼 직후 옥션 페이지가 검색을 마치고 결과를 그릴 때까지
-// 기다리는 시간. 너무 빨리 읽으면 아직 결과가 안 뜬 상태라 못 찾은 것처럼 실패함 — 특히
-// 재사용 탭에서 검색어만 바꿔치기할 때(전체 시세 확인) 체감이 컸음.
+// 아이템 하나에 대해 옥션 "구매" 탭(개당 실시간 최저가, PRICE_PER_ITEM_ASC)만 조회함.
+// 최근 거래 시세(price 탭)는 안 봄 — 최저가만으로 충분하다고 판단해 뺐고, 탭도 하나만 쓰면 되니 더 빠르고 단순함.
+// navigatedAt 이후에 보고된 값만 인정 — 안 그러면 이전에 같은 아이템을 조회했을 때 남아있던
+// 오래된 값을 "방금 찾은 값"으로 착각할 수 있음.
+// settleMs: 탭에서 검색어를 바꾼 직후 옥션 페이지가 검색을 마치고 결과를 그릴 때까지 기다리는 시간.
+// 너무 빨리 읽으면 아직 결과가 안 뜬 상태라 못 찾은 것처럼 실패함.
 async function fetchOnePrice(name,base,tr,{timeoutMs=12000,progress='',settleMs=5000}={}){
   if(!name)return false;
   const kw=encodeURIComponent(name);
   const buyUrl=`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`;
-  const siseUrl=`https://auction.maplestory.nexon.com/price?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=TRADE_DATE_DESC&itemCategory=ALL_CATEGORIES`;
-  auctionWins.buy=openOrReuseTab(auctionWins.buy,buyUrl);
-  auctionWins.sise=openOrReuseTab(auctionWins.sise,siseUrl);
-  setFetchStatus(`${progress}⏳ "${name}" 옥션 페이지 로딩 대기 중...`);
+  const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 대비 약간의 여유
+  auctionWin=openOrReuseTab(auctionWin,buyUrl);
+  setFetchStatus(`${progress}⏳ "${name}" 구매 최저가 확인 중...`);
   await sleep(settleMs);
   const startedAt=Date.now();
-  return await new Promise(resolve=>{
+  const buy=await new Promise(resolve=>{
     const timer=setInterval(async()=>{
       const elapsed=Date.now()-startedAt;
       try{
         const r=await fetch(`${base}/api/auction-price?item=${encodeURIComponent(name)}`);
         const d=await r.json();
-        if(d.found&&d.best){
-          const eok=d.best/1e8;
-          tr.querySelector('.i-sell').value=eok.toFixed(4);
-          calc();
-          const parts=[];
-          if(d.buy)parts.push(`구매 최저가 ${(d.buy.price/1e8).toFixed(2)}억`);
-          if(d.sise)parts.push(`최근 시세 ${(d.sise.price/1e8).toFixed(2)}억`);
-          setFetchStatus(`${progress}✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (${parts.join(' · ')} 중 낮은 값)`);
+        if(d.buy&&d.buy.ts>=navigatedAt){
           clearInterval(timer);
-          resolve(true);
+          resolve(d.buy);
           return;
         }
       }catch(e){}
       if(elapsed>=timeoutMs){
         clearInterval(timer);
-        let hint='⏱ 매물/거래 기록을 못 찾았어(시간 초과).';
-        if(!userscriptStatus||userscriptStatus.ageMs===null){
-          hint+=' 자동 반영이 한 번도 감지되지 않았어 — Tampermonkey 확장 설치와 옥션 탭 로그인 상태를 확인해줘.';
-        }else if(!userscriptStatus.seenRecently){
-          hint+=' 확장 반응이 최근엔 없었어 — 옥션 탭에서 로그인이 풀리지 않았는지 확인해줘.';
-        }else{
-          hint+=' 옥션 탭에서 검색 결과가 떴는지, 로그인이 되어 있는지 확인해줘.';
-        }
-        setFetchStatus(`${progress}${hint}`);
-        resolve(false);
+        resolve(null);
       }
     },1000);
   });
+  if(!buy){
+    let hint='⏱ 매물을 못 찾았어(시간 초과).';
+    if(!userscriptStatus||userscriptStatus.ageMs===null){
+      hint+=' 자동 반영이 한 번도 감지되지 않았어 — Tampermonkey 확장 설치와 옥션 탭 로그인 상태를 확인해줘.';
+    }else if(!userscriptStatus.seenRecently){
+      hint+=' 확장 반응이 최근엔 없었어 — 옥션 탭에서 로그인이 풀리지 않았는지 확인해줘.';
+    }else{
+      hint+=' 옥션 탭에서 검색 결과가 떴는지, 로그인이 되어 있는지 확인해줘.';
+    }
+    setFetchStatus(`${progress}${hint}`);
+    return false;
+  }
+  const eok=buy.price/1e8;
+  tr.querySelector('.i-sell').value=eok.toFixed(4);
+  calc();
+  setFetchStatus(`${progress}✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (구매 최저가)`);
+  return true;
 }
 function fetchAuctionPrice(tr){
   if(fetchBusy){setFetchStatus('⚠ 이미 시세 확인이 진행 중이야. 끝날 때까지 잠깐 기다려줘.');return;}
@@ -454,7 +455,7 @@ document.getElementById('fetchAllBtn').onclick=async()=>{
     setFetchStatus(`✅ 전체 ${rows.length}개 아이템 시세 확인 완료`);
   }finally{fetchBusy=false;setFetchButtonsDisabled(false);}
 };
-document.getElementById('closeTabsBtn').onclick=()=>{closeAuctionWins();setFetchStatus('옥션 탭을 닫았어.');};
+document.getElementById('closeTabsBtn').onclick=()=>{closeAuctionWin();setFetchStatus('옥션 탭을 닫았어.');};
 // 페이지 열자마자 한 번 조용히 확인(배너는 미설치일 때만 뜸, 시세 확인 자체는 막지 않음)
 (function(){
   const base=document.getElementById('apiUrl').value.trim().replace(/\/$/,'');
