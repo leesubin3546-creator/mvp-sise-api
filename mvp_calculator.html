@@ -588,37 +588,67 @@ function calc(){
     }
     const milOn=useMil&&itemsMil>0;
     const jeokFull=Math.max(0,remain-jeokMil);
-    // 나머지 실적: (a) 정가템 올림구매 (b) 메소마켓 전부 (c) 정가템 내림+잔여 메소마켓 중 총비용 최저
-    let fillNet=0,fillJeok=0,fillHtml='',fillIsItem=false;
+    // 나머지 실적: 아이템 하나만 정수배로 채우면 반올림 때문에 초과 실적(=추가 비용)이 생길 수 있음.
+    // 그래서 (a) 아이템별 올림구매 (b) 메소마켓 전부 (c) 아이템별 내림구매+메소마켓 잔여분(초과 없음)
+    // (d) 아이템A 내림구매 + 자투리를 다른 아이템B로 채우기(메소마켓 없이도 초과분 최소화) 까지
+    // 전부 후보로 만들어서 총비용이 가장 낮은 걸 고름 — 초과분이 클수록 비용도 커지니 총비용 최소화가
+    // 곧 초과분 최소화임. 다른 아이템으로 맞추면 초과가 줄거나 없어질 수 있어 "무조건 1등 아이템"만
+    // 쓰는 것보다 유리할 때가 많음.
+    const CIRCLED=['①','②','③','④','⑤','⑥','⑦','⑧'];
+    let fillNet=0,fillJeok=0,fillHtml='',fillItems=[];
     if(jeokFull>0){
-      const no=milOn?['② ','③ ']:['','② '];
       const cands=[];
-      const cntUp=Math.ceil(jeokFull/bestFull.cash);
-      cands.push({net:cntUp*bestFull.netF,jeok:cntUp*bestFull.cash,item:true,
-        html:`<div class="kv"><span class="lab">${no[0]}정가템 · ${bestFull.name}</span><b>${cntUp}개 · 실적 ${won(cntUp*bestFull.cash)}원</b></div>`});
+      for(const it of items){
+        const cntUp=Math.ceil(jeokFull/it.cash);
+        cands.push({net:cntUp*it.netF,jeok:cntUp*it.cash,items:[it],
+          lines:[{name:it.name,cnt:cntUp,jeok:cntUp*it.cash}]});
+      }
       if(mesoCostPer!==null){
-        cands.push({net:jeokFull/per*mesoCostPer,jeok:jeokFull,item:false,
-          html:`<div class="kv"><span class="lab">${no[0]}메소마켓식</span><b>실적 ${won(jeokFull)}원</b></div>`});
-        const cntDn=Math.floor(jeokFull/bestFull.cash);
-        if(cntDn>0){
-          const rem=jeokFull-cntDn*bestFull.cash;
-          cands.push({net:cntDn*bestFull.netF+rem/per*mesoCostPer,jeok:jeokFull,item:true,
-            html:`<div class="kv"><span class="lab">${no[0]}정가템 · ${bestFull.name}</span><b>${cntDn}개 · 실적 ${won(cntDn*bestFull.cash)}원</b></div>
-                  <div class="kv"><span class="lab">${no[1]}잔여분 메소마켓식</span><b>실적 ${won(rem)}원</b></div>`});
+        cands.push({net:jeokFull/per*mesoCostPer,jeok:jeokFull,items:[],
+          lines:[{name:'메소마켓식',jeok:jeokFull,meso:true}]});
+        for(const it of items){
+          const cntDn=Math.floor(jeokFull/it.cash);
+          if(cntDn<=0)continue;
+          const rem=jeokFull-cntDn*it.cash;
+          if(rem<=0)continue;
+          cands.push({net:cntDn*it.netF+rem/per*mesoCostPer,jeok:jeokFull,items:[it],
+            lines:[{name:it.name,cnt:cntDn,jeok:cntDn*it.cash},{name:'잔여분 메소마켓식',jeok:rem,meso:true}]});
+        }
+      }
+      if(items.length>1){
+        for(const primary of items){
+          const cntDn=Math.floor(jeokFull/primary.cash);
+          if(cntDn<=0)continue;
+          const rem=jeokFull-cntDn*primary.cash;
+          if(rem<=0)continue; // 나누어떨어지면 이미 위 올림구매 후보로 커버됨
+          for(const secondary of items){
+            if(secondary===primary)continue;
+            const cntSec=Math.ceil(rem/secondary.cash);
+            cands.push({net:cntDn*primary.netF+cntSec*secondary.netF,
+              jeok:cntDn*primary.cash+cntSec*secondary.cash,items:[primary,secondary],
+              lines:[{name:primary.name,cnt:cntDn,jeok:cntDn*primary.cash},
+                     {name:secondary.name,cnt:cntSec,jeok:cntSec*secondary.cash}]});
+          }
         }
       }
       const bestFill=cands.reduce((a,b)=>b.net<a.net?b:a);
-      fillNet=bestFill.net;fillJeok=bestFill.jeok;fillHtml=bestFill.html;fillIsItem=bestFill.item;
+      fillNet=bestFill.net;fillJeok=bestFill.jeok;fillItems=bestFill.items;
+      let idx=milOn?1:0;
+      fillHtml=bestFill.lines.map(l=>{
+        const label=l.meso?`${CIRCLED[idx++]||''} ${l.name}`:`${CIRCLED[idx++]||''} 정가템 · ${l.name}`;
+        const cntTxt=l.cnt!=null?`${l.cnt}개 · `:'';
+        return `<div class="kv"><span class="lab">${label}</span><b>${cntTxt}실적 ${won(l.jeok)}원</b></div>`;
+      }).join('');
     }
     const totalNet=(milOn?itemsMil*bestMil.netD:0)+fillNet;
     const totalJeok=jeokMil+fillJeok;
     aucTotal=totalNet; aucCostPer= remain>0?totalNet/remain*per:0;
     items.forEach(x=>x.tr.classList.remove('best'));
     if(milOn)bestMil.tr.classList.add('best');
-    if(fillIsItem)bestFull.tr.classList.add('best');
+    fillItems.forEach(it=>it.tr.classList.add('best'));
     const milLeft=milBudget-milUsed;
     const milLine=milOn
-      ? `<div class="kv"><span class="lab">① 마일리지템 · ${bestMil.name}</span><b>${itemsMil}개 · 실적 ${won(jeokMil)}원</b></div>
+      ? `<div class="kv"><span class="lab">${CIRCLED[0]} 마일리지템 · ${bestMil.name}</span><b>${itemsMil}개 · 실적 ${won(jeokMil)}원</b></div>
          <div class="kv"><span class="lab">　└ 사용 마일리지 (보유 ${won(num('mileage'))}+적립 ${won(earnedMil)}${milLeft>0.5?` · 잔여 ${won(milLeft)}`:''})</span><b>${won(milUsed)}</b></div>`
       : '';
     const overJeok=totalJeok-remain;
