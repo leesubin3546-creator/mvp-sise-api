@@ -378,7 +378,9 @@ window.addEventListener('beforeunload',()=>{try{closeAuctionWin();}catch(e){}});
 async function fetchOnePrice(name,base,tr,{timeoutMs=12000,progress='',settleMs=5000}={}){
   if(!name)return false;
   const kw=encodeURIComponent(name);
-  const buyUrl=`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=false&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`;
+  // isExactMatch=true 필수 — false면 "프리미엄 성형 쿠폰"을 검색할 때 "상반기 BEST 프리미엄 성형 쿠폰",
+  // "하반기 BEST 프리미엄 성형 쿠폰" 같은 별개 아이템까지 같이 잡혀서 서로 다른 아이템끼리 가격이 뒤섞임.
+  const buyUrl=`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=true&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`;
   const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 대비 약간의 여유
   auctionWin=openOrReuseTab(auctionWin,buyUrl);
   setFetchStatus(`${progress}⏳ "${name}" 구매 최저가 확인 중...`);
