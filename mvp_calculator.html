@@ -202,6 +202,7 @@
         <button class="btn ghost" id="addRow">＋ 아이템 추가</button>
         <button class="btn ghost" id="fetchAllBtn">🔍 전체 시세 확인</button>
         <button class="btn ghost" id="closeTabsBtn">🗙 옥션 탭 닫기</button>
+        <button class="btn ghost" id="resetItemsBtn">↺ 기본값으로 초기화</button>
       </div>
       <div class="hint">
         여러 아이템을 넣으면 <b>자동으로 최적 조합</b>을 짜줘: 마일리지(보유+엠작적립)는 <b>“마일 할인 시 손해율 최저” 아이템</b>에 몰고, 나머지 실적은 <b>“정가 손해율 최저” 아이템</b>으로 채워.<br>
@@ -269,6 +270,28 @@ const PRESET=[
   {name:'프리미엄 헤어 쿠폰',cash:5500,disc:30,sell:3.0999},
   {name:'프리미엄 성형 쿠폰',cash:3500,disc:30,sell:1.7669},
 ];
+// ---- 아이템 표 저장(localStorage) ----
+// 새로고침·서버 리붓과 무관하게 마지막 상태(추가한 아이템, 수정한 캐시가/마일리지%, 🔍로 받은 판매가)를
+// 브라우저에 남겨둠. 서버는 관여하지 않으므로 Render 무료티어 슬립/재시작에도 영향 없음(브라우저별로 저장됨).
+const LS_ITEMS_KEY='mvpCalc.items.v1';
+function saveItemList(){
+  const items=[...tbody.querySelectorAll('tr')].map(tr=>({
+    name:tr.querySelector('.i-name').value,
+    cash:tr.querySelector('.i-cash').value,
+    disc:tr.querySelector('.i-disc').value,
+    sell:tr.querySelector('.i-sell').value
+  }));
+  try{localStorage.setItem(LS_ITEMS_KEY,JSON.stringify(items));}catch(e){}
+}
+function loadItemList(){
+  try{
+    const raw=localStorage.getItem(LS_ITEMS_KEY);
+    if(!raw)return null;
+    const items=JSON.parse(raw);
+    return Array.isArray(items)&&items.length?items:null;
+  }catch(e){return null;}
+}
+
 const tbody=document.querySelector('#itemTable tbody');
 function addRow(it){
   const tr=document.createElement('tr');
@@ -280,13 +303,21 @@ function addRow(it){
     <td><button type="button" class="mini-btn i-fetch" title="옥션 구매 최저가 가져오기">🔍</button></td>
     <td class="i-be">-</td><td class="i-per">-</td>
     <td><span class="del" style="cursor:pointer;color:var(--bad);font-weight:700">✕</span></td>`;
-  tr.querySelector('.del').onclick=()=>{tr.remove();calc();};
+  tr.querySelector('.del').onclick=()=>{tr.remove();calc();saveItemList();};
   tr.querySelector('.i-fetch').onclick=()=>fetchAuctionPrice(tr);
-  tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',calc));
+  tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>{calc();saveItemList();}));
   tbody.appendChild(tr);
 }
-PRESET.forEach(addRow);
-document.getElementById('addRow').onclick=()=>{addRow(null);};
+(loadItemList()||PRESET).forEach(addRow);
+document.getElementById('addRow').onclick=()=>{addRow(null);saveItemList();};
+document.getElementById('resetItemsBtn').onclick=()=>{
+  if(!confirm('저장된 아이템 목록을 지우고 기본값(2026-07-23 업데이트 기준)으로 되돌릴까?'))return;
+  try{localStorage.removeItem(LS_ITEMS_KEY);}catch(e){}
+  tbody.innerHTML='';
+  PRESET.forEach(addRow);
+  saveItemList();
+  calc();
+};
 
 // ---- 옥션 시세 자동 가져오기 ----
 // 옥션은 넥슨 OTP 로그인이 있어야 접근 가능해서, 새 창을 열어 "사용자 본인 로그인 세션"으로
@@ -419,6 +450,7 @@ async function fetchOnePrice(name,base,tr,{timeoutMs=12000,progress='',settleMs=
   const eok=buy.price/1e8;
   tr.querySelector('.i-sell').value=eok.toFixed(4);
   calc();
+  saveItemList(); // 🔍로 받은 판매가는 input 이벤트가 안 붙어서 여기서 따로 저장
   setFetchStatus(`${progress}✅ "${name}" 판매가 ${eok.toFixed(2)}억으로 반영 (구매 최저가)`);
   return true;
 }
