@@ -595,23 +595,23 @@ function calc(){
     // 곧 초과분 최소화임. 다른 아이템으로 맞추면 초과가 줄거나 없어질 수 있어 "무조건 1등 아이템"만
     // 쓰는 것보다 유리할 때가 많음.
     const CIRCLED=['①','②','③','④','⑤','⑥','⑦','⑧'];
-    let fillNet=0,fillJeok=0,fillHtml='',fillItems=[];
+    let fillNet=0,fillJeok=0,fillHtml='',fillItems=[],overshootItem=null;
     if(jeokFull>0){
       const cands=[];
       for(const it of items){
         const cntUp=Math.ceil(jeokFull/it.cash);
-        cands.push({net:cntUp*it.netF,jeok:cntUp*it.cash,items:[it],
+        cands.push({net:cntUp*it.netF,jeok:cntUp*it.cash,items:[it],overshoot:it,
           lines:[{name:it.name,cnt:cntUp,jeok:cntUp*it.cash}]});
       }
       if(mesoCostPer!==null){
-        cands.push({net:jeokFull/per*mesoCostPer,jeok:jeokFull,items:[],
+        cands.push({net:jeokFull/per*mesoCostPer,jeok:jeokFull,items:[],overshoot:null,
           lines:[{name:'메소마켓식',jeok:jeokFull,meso:true}]});
         for(const it of items){
           const cntDn=Math.floor(jeokFull/it.cash);
           if(cntDn<=0)continue;
           const rem=jeokFull-cntDn*it.cash;
           if(rem<=0)continue;
-          cands.push({net:cntDn*it.netF+rem/per*mesoCostPer,jeok:jeokFull,items:[it],
+          cands.push({net:cntDn*it.netF+rem/per*mesoCostPer,jeok:jeokFull,items:[it],overshoot:null,
             lines:[{name:it.name,cnt:cntDn,jeok:cntDn*it.cash},{name:'잔여분 메소마켓식',jeok:rem,meso:true}]});
         }
       }
@@ -625,14 +625,14 @@ function calc(){
             if(secondary===primary)continue;
             const cntSec=Math.ceil(rem/secondary.cash);
             cands.push({net:cntDn*primary.netF+cntSec*secondary.netF,
-              jeok:cntDn*primary.cash+cntSec*secondary.cash,items:[primary,secondary],
+              jeok:cntDn*primary.cash+cntSec*secondary.cash,items:[primary,secondary],overshoot:secondary,
               lines:[{name:primary.name,cnt:cntDn,jeok:cntDn*primary.cash},
                      {name:secondary.name,cnt:cntSec,jeok:cntSec*secondary.cash}]});
           }
         }
       }
       const bestFill=cands.reduce((a,b)=>b.net<a.net?b:a);
-      fillNet=bestFill.net;fillJeok=bestFill.jeok;fillItems=bestFill.items;
+      fillNet=bestFill.net;fillJeok=bestFill.jeok;fillItems=bestFill.items;overshootItem=bestFill.overshoot;
       let idx=milOn?1:0;
       fillHtml=bestFill.lines.map(l=>{
         const label=l.meso?`${CIRCLED[idx++]||''} ${l.name}`:`${CIRCLED[idx++]||''} 정가템 · ${l.name}`;
@@ -652,11 +652,21 @@ function calc(){
          <div class="kv"><span class="lab">　└ 사용 마일리지 (보유 ${won(num('mileage'))}+적립 ${won(earnedMil)}${milLeft>0.5?` · 잔여 ${won(milLeft)}`:''})</span><b>${won(milUsed)}</b></div>`
       : '';
     const overJeok=totalJeok-remain;
+    // 정수 개수로만 살 수 있어서 생기는 초과분 — "목표 채우는 데 필요한 만큼"과 별개로,
+    // 그 초과분 때문에 추가로 결제(캐시 충전)해야 하는 돈이 실제로 나가니 따로 보여줌.
+    const overGross=overJeok>0.5?overJeok*(1-disc):0; // 초과분에 대해 실제로 충전해야 하는 캐시(원)
+    const overNet=overJeok>0.5&&overshootItem?overJeok/per*overshootItem.perF:0; // 그중 순손익(경매장 판매로 회수 후)
+    const overHtml=overJeok>0.5?`
+      <div class="explain" style="margin:10px 0 0">
+        ※ 정수 개수 구매라 목표보다 실적 <b>${won(overJeok)}원</b> 초과 달성돼.
+        <div class="kv" style="border-bottom:none;padding-bottom:0"><span class="lab">→ 이 초과분 때문에 추가로 충전해야 하는 캐시</span><b>${won(overGross)} 원</b></div>
+        ${overshootItem?`<div class="kv" style="border-bottom:none;padding-top:0"><span class="lab">　└ 그중 경매장 판매 후 순손익</span><b class="${overNet<0?'pos':'neg'}">${won(overNet)} 원</b></div>`:''}
+      </div>`:'';
     aucHtml=`
       <div class="kv"><span class="lab">최적 조합 (경매장·메소마켓 종합)</span><b><span class="badge">BEST</span></b></div>
       ${milLine}
       ${fillHtml}
-      ${overJeok>0.5?`<div class="hint">※ 정수 개수 구매로 목표보다 실적 ${won(overJeok)}원 초과 달성 (초과분 비용 포함됨)</div>`:''}
+      ${overHtml}
       <div class="kv"><span class="lab">남은 실적 다 채우는 총 실부담 ${rateTxt(totalNet,totalJeok)}</span><b class="${totalNet<0?'pos':'neg'}">${won(totalNet)} 원</b></div>`;
   } else aucHtml='<div class="hint">아이템의 캐시가격·판매가를 입력해줘.</div>';
   document.getElementById('auctionResult').innerHTML=aucHtml;
