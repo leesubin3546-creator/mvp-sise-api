@@ -3,8 +3,36 @@
 메이플 MVP작(엠작) 비용 계산기 + 시세 자동수집 백엔드. Render 무료티어 배포용.
 
 - `mvp_calculator.html` — 계산기 프론트엔드(단일 파일). `/` 접속 시 이 화면이 뜸.
-- `server.js` — 메소마켓 시세(`/api/sise`) + 옥션 시세 릴레이(`/api/auction-price`) API.
-- `userscript/auction-price-reporter.user.js` — 옥션 페이지에서 가격을 읽어 백엔드로 보고하는 유저스크립트.
+- `listings.html` — 매물 찾기 화면. `/listings` 접속 시 이 화면이 뜸.
+- `server.js` — 메소마켓 시세(`/api/sise`) + 옥션 시세 릴레이(`/api/auction-price`) +
+  매물 목록 릴레이(`/api/auction-listings`) API.
+- `userscript/auction-price-reporter.user.js` — 옥션 페이지에서 가격과 매물 목록을 읽어 백엔드로
+  보고하는 유저스크립트.
+
+## 매물 찾기 (`/listings`)
+
+옥션의 검색 필터를 그대로 재현해서, 조건에 맞는 매물을 목록으로 보여줌. 아이템명/분류/가격/스타포스/
+잠재·에디 등급에 더해 **잠재능력·에디셔널 옵션을 여러 줄** 걸 수 있음(여러 줄 = 모두 만족하는 매물만).
+
+필터는 옥션이 실제로 쓰는 URL 형식 그대로 만들어 보냄:
+
+```
+/buy?searchTab=condition&isExactMatch=false&page=1&limit=20
+    &sortType=PRICE_PER_ITEM_ASC&itemCategory=ARMOR
+    &enhancementOption::starforceMin=17
+    &enhancementOption::potentialGrade=legendary
+    &enhancementOption::potentialFilters::optionRows=strPercent%1F13%1EphysicalAttackPercent%1F12
+```
+
+- 옵션 한 줄은 `코드` + `%1F`(U+001F) + `최소값`, 줄과 줄 사이는 `%1E`(U+001E)로 이어붙임.
+- `enhancementOption::` 키의 콜론은 인코딩하면 안 먹어서, 키는 그대로 두고 값만 인코딩함.
+- 옵션 코드는 `bossDamagePercent`, `ignoreMonsterDefense`, `criticalDamagePercent`, `strPercent` 등
+  32종을 `listings.html`의 `POT_OPTIONS`에 담아둠.
+
+잠재 옵션 상세 줄은 옥션 목록 화면에 표시되지 않아서 매물 표에도 안 나오지만, 옥션이 필터를 이미 적용한
+결과라 목록에 뜬 매물은 모두 조건을 만족함.
+
+검색 조건은 브라우저 `localStorage`에 저장됨(마지막 조건 자동 복원 + 이름 붙여 저장하는 프리셋).
 
 ## 아이템 표 저장
 

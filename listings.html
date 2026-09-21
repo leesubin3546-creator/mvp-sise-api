@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>메이플 옥션 매물 찾기</title>
+<style>
+  :root{
+    --bg:#ece0c9; --card:#faf5ea; --card2:#f2ead8; --inp:#fffdf7;
+    --line:#e0d2b4; --line2:#d3c19c;
+    --txt:#453d2e; --sub:#8c7f64; --accent:#c07a3c; --accent-d:#a5622a;
+    --btn:#5d8a75; --btn-d:#4a7361;
+    --good:#3f8f5b; --bad:#bf5148; --warn:#b7852b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;
+    line-height:1.6;padding:18px;max-width:1040px;margin:0 auto;
+    -webkit-font-smoothing:antialiased}
+  h1{font-size:23px;margin:4px 0 3px;letter-spacing:-.3px}
+  .sub{color:var(--sub);font-size:13.5px;margin-bottom:16px}
+  .nav{display:flex;gap:8px;margin-bottom:18px}
+  .nav a{flex:0 0 auto;text-decoration:none;padding:9px 16px;border-radius:11px;
+    background:var(--card2);border:1.5px solid var(--line2);color:var(--sub);
+    font-size:14px;font-weight:700}
+  .nav a.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:20px;margin-bottom:16px;box-shadow:0 1px 2px rgba(120,95,50,.06)}
+  .card h2{font-size:16px;margin:0 0 16px;display:flex;align-items:center;gap:9px}
+  .card h2 .n{background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+  label{display:block;font-size:12.5px;color:var(--sub);margin:0 0 6px;font-weight:600}
+  input,select{width:100%;background:var(--inp);border:1px solid var(--line2);
+    color:var(--txt);border-radius:10px;padding:10px 11px;font-size:14px;outline:none;transition:.12s}
+  input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(192,122,60,.14)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1;min-width:150px}
+  .hint{font-size:11.5px;color:var(--sub);margin-top:8px;line-height:1.6}
+  .btn{background:var(--btn);color:#fff;border:none;border-radius:10px;padding:11px 15px;
+    font-size:13.5px;font-weight:700;cursor:pointer;transition:.12s}
+  .btn:hover{background:var(--btn-d)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:var(--card2);color:var(--txt);border:1.5px solid var(--line2)}
+  .btn.ghost:hover{border-color:var(--accent)}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
+  .optrow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .optrow select{flex:1}
+  .optrow input{width:96px}
+  .optrow .del{cursor:pointer;color:var(--bad);font-weight:700;padding:0 6px;font-size:16px}
+  .banner-warn{background:#fbeee0;border-left:4px solid var(--warn);border-radius:8px;
+    padding:11px 13px;font-size:12.5px;color:#6f5230;margin:0 0 14px;line-height:1.65}
+  .banner-warn .btnrow{margin-top:9px}
+  .banner-warn .btn{padding:8px 12px;font-size:12.5px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}
+  th{color:var(--sub);font-weight:700;font-size:11.5px;border-bottom:1.5px solid var(--line2)}
+  td:first-child,th:first-child{text-align:left}
+  .grade{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:6px;
+    margin-left:5px;font-weight:700}
+  .g-레전드리{background:#e9f3d8;color:#5f7a2a}
+  .g-유니크{background:#f6ebd2;color:#9a7521}
+  .g-에픽{background:#e8e2f5;color:#5f4f96}
+  .g-레어{background:#dcecf6;color:#376b8c}
+  .g-노멀{background:#eee9dd;color:#75695a}
+  .price{font-weight:700;color:var(--accent-d)}
+  .status{font-size:12.5px;min-height:1.4em;color:var(--sub);margin-top:10px}
+  .mini{font-size:11.5px;color:var(--sub);text-align:center;margin:20px 0;line-height:1.7}
+  .empty{text-align:center;color:var(--sub);padding:26px 0;font-size:13.5px}
+</style>
+</head>
+<body>
+  <h1>🔎 메이플 옥션 매물 찾기</h1>
+  <div class="sub">옥션 검색 필터를 그대로 걸어서, 조건에 맞는 매물을 한눈에 볼 수 있게 정리해줘.</div>
+
+  <div class="nav">
+    <a href="/">🍁 엠작 계산기</a>
+    <a href="/listings" class="on">🔎 매물 찾기</a>
+  </div>
+
+  <div class="banner-warn" id="userscriptBanner" style="display:none"></div>
+
+  <!-- 1. 검색 조건 -->
+  <div class="card">
+    <h2><span class="n">1</span> 검색 조건</h2>
+    <div class="row">
+      <div class="col" style="min-width:260px">
+        <label>아이템명 (비워두면 필터 조건만으로 검색)</label>
+        <input id="keyword" type="text" placeholder="예: 앱솔랩스 나이트헬름">
+      </div>
+      <div class="col" style="max-width:150px">
+        <label>이름 일치</label>
+        <select id="exact">
+          <option value="false">부분 일치</option>
+          <option value="true">정확히 일치</option>
+        </select>
+      </div>
+      <div class="col" style="max-width:150px">
+        <label>분류</label>
+        <select id="category">
+          <option value="ALL_CATEGORIES">전체</option>
+          <option value="ARMOR" selected>방어구</option>
+          <option value="WEAPON">무기</option>
+          <option value="CONSUME">소비</option>
+          <option value="CASH">캐시</option>
+          <option value="ETC">기타</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <div class="col"><label>최소 가격 (메소)</label><input id="minPrice" type="text" inputmode="numeric" placeholder="예: 100000000"></div>
+      <div class="col"><label>최대 가격 (메소)</label><input id="maxPrice" type="text" inputmode="numeric" placeholder="비우면 제한 없음"></div>
+      <div class="col" style="max-width:120px"><label>스타포스 최소</label><input id="sfMin" type="number" placeholder="예: 17"></div>
+      <div class="col" style="max-width:120px"><label>스타포스 최대</label><input id="sfMax" type="number" placeholder="예: 22"></div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <div class="col" style="max-width:190px">
+        <label>잠재등급</label>
+        <select id="potGrade">
+          <option value="">전체</option>
+          <option value="none">없음</option>
+          <option value="rare">레어</option>
+          <option value="epic">에픽</option>
+          <option value="unique">유니크</option>
+          <option value="legendary">레전드리</option>
+        </select>
+      </div>
+      <div class="col" style="max-width:190px">
+        <label>에디셔널 등급</label>
+        <select id="addGrade">
+          <option value="">전체</option>
+          <option value="none">없음</option>
+          <option value="rare">레어</option>
+          <option value="epic">에픽</option>
+          <option value="unique">유니크</option>
+          <option value="legendary">레전드리</option>
+        </select>
+      </div>
+      <div class="col" style="max-width:190px">
+        <label>정렬</label>
+        <select id="sortType">
+          <option value="PRICE_PER_ITEM_ASC">개당 낮은 가격순</option>
+          <option value="PRICE_ASC">총액 낮은 가격순</option>
+          <option value="PRICE_DESC">총액 높은 가격순</option>
+          <option value="TRADE_DATE_DESC">최신 등록순</option>
+        </select>
+      </div>
+      <div class="col" style="max-width:150px">
+        <label>가져올 매물 수</label>
+        <select id="limit">
+          <option value="20" selected>20개</option>
+          <option value="40">40개</option>
+          <option value="60">60개</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:18px">
+      <label>잠재능력 옵션 (여러 줄 = 모두 만족하는 매물만)</label>
+      <div id="potRows"></div>
+      <button type="button" class="btn ghost" id="addPot" style="padding:7px 12px;font-size:12.5px">＋ 잠재 옵션 추가</button>
+    </div>
+
+    <div style="margin-top:18px">
+      <label>에디셔널 잠재능력 옵션</label>
+      <div id="addRows"></div>
+      <button type="button" class="btn ghost" id="addAdd" style="padding:7px 12px;font-size:12.5px">＋ 에디 옵션 추가</button>
+    </div>
+
+    <div class="btnrow">
+      <button class="btn" id="searchBtn">🔎 옥션에서 검색</button>
+      <button class="btn ghost" id="closeTabBtn">🗙 옥션 탭 닫기</button>
+      <button class="btn ghost" id="savePresetBtn">💾 이 조건 저장</button>
+      <select id="presetSel" style="max-width:220px"><option value="">— 저장된 조건 —</option></select>
+      <button class="btn ghost" id="delPresetBtn">삭제</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="hint">
+      검색하면 옥션 탭이 하나 열리고, 거기서 실제로 필터가 적용된 결과를 유저스크립트가 읽어와 아래 표에 정리해줘.
+      옥션은 <b>하루 100회 검색 제한</b>과 <b>5초 연속검색 제한</b>이 있어서, 한 번 검색할 때마다 1회가 소모돼.
+      열린 옥션 탭에서 <b>로그인이 안 돼 있으면</b> 결과가 안 나오니 먼저 로그인해줘.
+    </div>
+  </div>
+
+  <!-- 2. 결과 -->
+  <div class="card">
+    <h2><span class="n">2</span> 매물 목록 <span id="resultMeta" style="font-size:12px;color:var(--sub);font-weight:400"></span></h2>
+    <div id="resultWrap"><div class="empty">아직 검색 결과가 없어. 위에서 조건을 걸고 검색해줘.</div></div>
+  </div>
+
+  <div class="mini">
+    옥션 필터를 그대로 사용 · 로그인은 사용자 본인 브라우저 세션에서만 이뤄짐<br>
+    잠재 옵션 상세 줄은 옥션 목록 화면에 표시되지 않지만, 필터가 적용된 결과라 조건을 만족하는 매물만 나와.
+  </div>
+
+<script>
+const AUCTION_BACKEND=location.origin;
+const TAMPERMONKEY_URL='https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo';
+const LS_PRESETS='mvpListings.presets.v1';
+const LS_LAST='mvpListings.last.v1';
+
+// 옥션 잠재/에디 옵션 코드 (번들에서 추출한 실제 값)
+const POT_OPTIONS=[
+  ['bossDamagePercent','보스 몬스터 데미지 % 증가'],
+  ['ignoreMonsterDefense','몬스터 방어율 무시'],
+  ['damagePercent','데미지 %증가'],
+  ['physicalAttackPercent','공격력 %증가'],
+  ['magicAttackPercent','마력 %증가'],
+  ['allStatsPercent','올스탯 %증가'],
+  ['strPercent','STR %증가'],
+  ['dexPercent','DEX %증가'],
+  ['intPercent','INT %증가'],
+  ['lukPercent','LUK %증가'],
+  ['criticalPercent','크리티컬 확률 증가'],
+  ['criticalDamagePercent','크리티컬 데미지 증가'],
+  ['skillCooldownReduction','스킬 재사용 대기시간 감소'],
+  ['itemDropPercent','아이템 획득 확률 증가'],
+  ['mesosObtainedPercent','메소 획득량 증가'],
+  ['statusResistance','상태 이상 내성 증가'],
+  ['elementalResistance','모든 속성 내성 증가'],
+  ['maxHpPercent','최대 HP %증가'],
+  ['maxMpPercent','최대 MP %증가'],
+  ['physicalAttack','공격력 증가'],
+  ['magicAttack','마력 증가'],
+  ['str','STR 증가'],
+  ['dex','DEX 증가'],
+  ['int','INT 증가'],
+  ['luk','LUK 증가'],
+  ['maxHp','최대 HP 증가'],
+  ['maxMp','최대 MP 증가'],
+  ['allStats','올스탯 증가'],
+  ['skillLevelIncrease','4차 이하 스킬 레벨 증가'],
+  ['hpRecovery','공격 시 HP 회복'],
+  ['mpRecovery','공격 시 MP 회복'],
+  ['hpRecoveryRate','HP 회복 아이템 및 스킬 효율 증가']
+];
+
+const $=id=>document.getElementById(id);
+const setStatus=m=>{$('status').textContent=m;};
+const won=n=>Math.round(n).toLocaleString('ko-KR');
+// 메소를 "12억 3456만" 처럼 읽기 쉽게
+function meso(n){
+  if(n==null)return '-';
+  const eok=Math.floor(n/1e8), man=Math.floor((n%1e8)/1e4), rest=Math.round(n%1e4);
+  const p=[];
+  if(eok)p.push(eok+'억');
+  if(man)p.push(man+'만');
+  if(rest||(!eok&&!man))p.push(String(rest)); // 끝자리도 옥션 표기처럼 콤마 없이 그대로
+  return p.join(' ');
+}
+
+// ---- 옵션 줄 UI ----
+function addOptRow(wrapId,preset){
+  const wrap=$(wrapId);
+  const div=document.createElement('div');
+  div.className='optrow';
+  const sel=document.createElement('select');
+  sel.innerHTML='<option value="">— 옵션 선택 —</option>'+
+    POT_OPTIONS.map(([c,k])=>`<option value="${c}">${k}</option>`).join('');
+  const val=document.createElement('input');
+  val.type='number'; val.placeholder='최소값';
+  const del=document.createElement('span');
+  del.className='del'; del.textContent='✕';
+  del.onclick=()=>{div.remove();saveLast();};
+  if(preset){ sel.value=preset.code||''; val.value=preset.val??''; }
+  sel.onchange=saveLast; val.oninput=saveLast;
+  div.append(sel,val,del);
+  wrap.appendChild(div);
+}
+function readOptRows(wrapId){
+  return [...$(wrapId).querySelectorAll('.optrow')].map(r=>({
+    code:r.querySelector('select').value,
+    val:r.querySelector('input').value
+  })).filter(o=>o.code&&o.val!=='');
+}
+
+// ---- 필터 → 옥션 URL ----
+// enhancementOption:: 키의 콜론은 인코딩하면 안 먹어서 키는 그대로 두고 값만 인코딩함.
+// 옵션 줄은 "코드\x1F값" 을 "\x1E" 로 이어붙이는 형식 (옥션이 실제로 쓰는 인코딩).
+function buildAuctionUrl(f){
+  const p=[];
+  p.push('searchTab=condition');
+  if(f.keyword)p.push('keyword='+encodeURIComponent(f.keyword));
+  p.push('isExactMatch='+f.exact);
+  p.push('page=1');
+  p.push('limit='+f.limit);
+  p.push('sortType='+f.sortType);
+  p.push('itemCategory='+f.category);
+  if(f.minPrice)p.push('minPrice='+f.minPrice);
+  if(f.maxPrice)p.push('maxPrice='+f.maxPrice);
+  if(f.sfMin)p.push('enhancementOption::starforceMin='+f.sfMin);
+  if(f.sfMax)p.push('enhancementOption::starforceMax='+f.sfMax);
+  if(f.potGrade)p.push('enhancementOption::potentialGrade='+f.potGrade);
+  if(f.addGrade)p.push('enhancementOption::additionalPotentialGrade='+f.addGrade);
+  const enc=rows=>encodeURIComponent(rows.map(r=>r.code+'\x1F'+r.val).join('\x1E'));
+  if(f.potRows.length)p.push('enhancementOption::potentialFilters::optionRows='+enc(f.potRows));
+  if(f.addRows.length)p.push('enhancementOption::additionalPotentialFilters::optionRows='+enc(f.addRows));
+  return 'https://auction.maplestory.nexon.com/buy?'+p.join('&');
+}
+function readFilters(){
+  return {
+    keyword:$('keyword').value.trim(),
+    exact:$('exact').value,
+    category:$('category').value,
+    minPrice:$('minPrice').value.replace(/[^\d]/g,''),
+    maxPrice:$('maxPrice').value.replace(/[^\d]/g,''),
+    sfMin:$('sfMin').value, sfMax:$('sfMax').value,
+    potGrade:$('potGrade').value, addGrade:$('addGrade').value,
+    sortType:$('sortType').value, limit:$('limit').value,
+    potRows:readOptRows('potRows'), addRows:readOptRows('addRows')
+  };
+}
+function applyFilters(f){
+  if(!f)return;
+  $('keyword').value=f.keyword||'';
+  $('exact').value=f.exact||'false';
+  $('category').value=f.category||'ARMOR';
+  $('minPrice').value=f.minPrice||'';
+  $('maxPrice').value=f.maxPrice||'';
+  $('sfMin').value=f.sfMin||''; $('sfMax').value=f.sfMax||'';
+  $('potGrade').value=f.potGrade||''; $('addGrade').value=f.addGrade||'';
+  $('sortType').value=f.sortType||'PRICE_PER_ITEM_ASC';
+  $('limit').value=f.limit||'20';
+  $('potRows').innerHTML=''; $('addRows').innerHTML='';
+  (f.potRows||[]).forEach(r=>addOptRow('potRows',r));
+  (f.addRows||[]).forEach(r=>addOptRow('addRows',r));
+}
+
+// ---- 조건 저장(localStorage, 이 브라우저에만) ----
+function saveLast(){ try{localStorage.setItem(LS_LAST,JSON.stringify(readFilters()));}catch(e){} }
+function loadPresets(){ try{return JSON.parse(localStorage.getItem(LS_PRESETS))||[];}catch(e){return[];} }
+function renderPresets(){
+  const ps=loadPresets();
+  $('presetSel').innerHTML='<option value="">— 저장된 조건 —</option>'+
+    ps.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+}
+$('savePresetBtn').onclick=()=>{
+  const name=prompt('이 검색 조건을 어떤 이름으로 저장할까?');
+  if(!name)return;
+  const ps=loadPresets(); ps.push({name,filters:readFilters()});
+  try{localStorage.setItem(LS_PRESETS,JSON.stringify(ps));}catch(e){}
+  renderPresets(); setStatus(`"${name}" 조건을 저장했어.`);
+};
+$('presetSel').onchange=e=>{
+  const i=e.target.value; if(i==='')return;
+  const p=loadPresets()[i]; if(p){applyFilters(p.filters);saveLast();setStatus(`"${p.name}" 조건을 불러왔어.`);}
+};
+$('delPresetBtn').onclick=()=>{
+  const i=$('presetSel').value; if(i==='')return setStatus('삭제할 조건을 먼저 골라줘.');
+  const ps=loadPresets(); const [rm]=ps.splice(i,1);
+  try{localStorage.setItem(LS_PRESETS,JSON.stringify(ps));}catch(e){}
+  renderPresets(); setStatus(`"${rm.name}" 조건을 삭제했어.`);
+};
+
+// ---- 유저스크립트 감지 안내 (설치 안 돼 있으면 검색해도 결과를 못 읽음) ----
+let userscriptStatus=null, autoPromptShown=false;
+async function refreshUserscriptStatus(){
+  try{ userscriptStatus=await (await fetch(AUCTION_BACKEND+'/api/userscript-ping')).json(); }
+  catch(e){ userscriptStatus=null; }
+  const el=$('userscriptBanner');
+  if(!userscriptStatus||userscriptStatus.ageMs!==null){el.style.display='none';return;}
+  el.innerHTML=`⚠ <b>유저스크립트가 아직 한 번도 감지되지 않았어.</b> 검색해도 매물이 안 채워진다면
+    Tampermonkey 확장과 유저스크립트가 설치돼 있는지, 옥션 탭에서 <b>로그인</b>이 돼 있는지 확인해줘.
+    <div class="btnrow">
+      <button type="button" class="btn" id="bnTm">1) Tampermonkey 설치</button>
+      <button type="button" class="btn ghost" id="bnUs">2) 유저스크립트 설치</button>
+      <button type="button" class="btn ghost" id="bnRe">설치 확인 다시하기</button>
+    </div>`;
+  el.style.display='block';
+  $('bnTm').onclick=()=>window.open(TAMPERMONKEY_URL,'_blank');
+  $('bnUs').onclick=()=>window.open(AUCTION_BACKEND+'/userscript/auction-price-reporter.user.js','_blank');
+  $('bnRe').onclick=refreshUserscriptStatus;
+}
+
+// ---- 옥션 탭 (1개만 열어서 계속 재사용) ----
+// 같은 넥슨 계정으로 옥션 탭이 여러 개 동시에 열려 있으면 세션이 강제 종료돼서, 항상 1개만 씀.
+let auctionWin=null;
+function openOrReuseTab(url){
+  if(auctionWin&&!auctionWin.closed){ auctionWin.location.href=url; return auctionWin; }
+  return window.open(url,'_blank');
+}
+function closeAuctionWin(){
+  try{ if(auctionWin&&!auctionWin.closed)auctionWin.close(); }catch(e){}
+  auctionWin=null;
+}
+window.addEventListener('beforeunload',()=>{try{closeAuctionWin();}catch(e){}});
+$('closeTabBtn').onclick=()=>{closeAuctionWin();setStatus('옥션 탭을 닫았어.');};
+
+// ---- 검색 ----
+let searching=false;
+$('searchBtn').onclick=async()=>{
+  if(searching){setStatus('⚠ 이미 검색이 진행 중이야.');return;}
+  const f=readFilters();
+  saveLast();
+  const url=buildAuctionUrl(f);
+  searching=true; $('searchBtn').disabled=true;
+  try{
+    fetch(AUCTION_BACKEND+'/api/ping').catch(()=>{}); // 콜드스타트 미리 깨우기
+    refreshUserscriptStatus();
+    const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 여유
+    auctionWin=openOrReuseTab(url);
+    setStatus('⏳ 옥션 탭에서 검색 중... (결과 렌더링까지 몇 초 걸려)');
+    await new Promise(r=>setTimeout(r,5000)); // 검색 결과가 그려질 때까지 대기
+    const started=Date.now();
+    const timeoutMs=15000;
+    let got=null;
+    while(Date.now()-started<timeoutMs){
+      try{
+        const d=await (await fetch(AUCTION_BACKEND+'/api/auction-listings')).json();
+        if(d.found&&d.ts>=navigatedAt){ got=d; break; }
+      }catch(e){}
+      await new Promise(r=>setTimeout(r,1000));
+    }
+    if(got){ render(got); setStatus(`✅ ${got.rows.length}건 가져왔어 (옥션 전체 결과 ${got.total}건).`); }
+    else{
+      let why='옥션 탭에서 결과가 떴는지 확인해줘.';
+      if(!userscriptStatus||userscriptStatus.ageMs===null) why='유저스크립트가 감지되지 않았어 — 설치와 옥션 로그인을 확인해줘.';
+      else if(!userscriptStatus.seenRecently) why='유저스크립트 반응이 최근에 없었어 — 옥션 탭 로그인이 풀렸는지 확인해줘.';
+      setStatus('⏱ 매물을 못 받았어. '+why);
+    }
+  }finally{ searching=false; $('searchBtn').disabled=false; }
+};
+
+// ---- 결과 표시 ----
+function render(d){
+  const rows=d.rows||[];
+  $('resultMeta').textContent=rows.length?`· ${rows.length}건 표시 (전체 ${d.total}건) · ${new Date(d.ts).toLocaleTimeString('ko-KR')} 기준`:'';
+  if(!rows.length){
+    $('resultWrap').innerHTML='<div class="empty">조건에 맞는 매물이 없어. 필터를 조금 완화해봐.</div>';
+    return;
+  }
+  const body=rows.map(r=>{
+    const g=[r.potentialGrade,r.additionalGrade].filter(Boolean)
+      .map(x=>`<span class="grade g-${x}">${x}</span>`).join('');
+    const per=r.qty>1&&r.pricePerUnit?`<div style="font-size:11.5px;color:var(--sub)">${r.qty}개 · 개당 ${meso(r.pricePerUnit)}</div>`:'';
+    const t=r.remainMin!=null?`${Math.floor(r.remainMin/60)}시간 ${r.remainMin%60}분`:'-';
+    return `<tr>
+      <td>${r.name}${g}${per}</td>
+      <td class="price">${meso(r.priceTotal)}</td>
+      <td>${r.qty>1?r.qty+'개':'1개'}</td>
+      <td>${r.zzim??'-'}</td>
+      <td>${t}</td>
+    </tr>`;
+  }).join('');
+  $('resultWrap').innerHTML=`<table>
+    <thead><tr><th>아이템</th><th>가격(총액)</th><th>수량</th><th>찜</th><th>남은 시간</th></tr></thead>
+    <tbody>${body}</tbody></table>`;
+}
+
+// ---- 초기화 ----
+$('addPot').onclick=()=>{addOptRow('potRows');};
+$('addAdd').onclick=()=>{addOptRow('addRows');};
+['keyword','exact','category','minPrice','maxPrice','sfMin','sfMax','potGrade','addGrade','sortType','limit']
+  .forEach(id=>$(id).addEventListener('input',saveLast));
+(function init(){
+  let last=null;
+  try{ last=JSON.parse(localStorage.getItem(LS_LAST)); }catch(e){}
+  if(last)applyFilters(last);
+  if(!$('potRows').children.length)addOptRow('potRows');
+  renderPresets();
+  refreshUserscriptStatus();
+})();
+</script>
+</body>
+</html>

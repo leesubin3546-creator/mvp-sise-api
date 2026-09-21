@@ -106,6 +106,29 @@ app.post('/api/auction-price', (req, res) => {
   res.json({ ok: true, item: key, kind });
 });
 
+// ---- 매물 목록 릴레이 (매물 찾기 페이지용) ----
+// 가격 하나가 아니라 "필터로 걸러진 매물 목록"을 통째로 주고받음.
+// 필터 조합이 복잡해서 키로 매칭하는 대신, 가장 최근 보고 1건만 두고 프론트가
+// "내가 검색을 띄운 시각 이후에 들어온 보고인지"(ts)로 판별함.
+let lastListings = null; // { rows:[...], total, url, ts }
+
+app.post('/api/auction-listings', (req, res) => {
+  const { rows, total, url } = req.body || {};
+  if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows 배열 필요' });
+  lastListings = {
+    rows: rows.slice(0, 100),
+    total: Number.isFinite(total) ? total : rows.length,
+    url: url || null,
+    ts: Date.now()
+  };
+  res.json({ ok: true, count: lastListings.rows.length });
+});
+
+app.get('/api/auction-listings', (req, res) => {
+  if (!lastListings) return res.json({ found: false });
+  res.json({ found: true, ...lastListings });
+});
+
 app.get('/api/auction-price', (req, res) => {
   const key = normItem(req.query.item);
   const entry = auctionPrices[key];
@@ -117,6 +140,9 @@ app.get('/api/auction-price', (req, res) => {
 
 // 루트 접속 시 계산기 화면 제공 (API 안내는 /api/sise 참고)
 app.get('/', (req, res) => res.sendFile(__dirname + '/mvp_calculator.html'));
+
+// 매물 찾기 화면 (옥션 필터를 그대로 걸어서 조건에 맞는 매물을 목록으로 보여줌)
+app.get('/listings', (req, res) => res.sendFile(__dirname + '/listings.html'));
 
 // 유저스크립트 파일 (계산기 안내문의 다운로드 링크 대상)
 app.use('/userscript', express.static(__dirname + '/userscript'));
