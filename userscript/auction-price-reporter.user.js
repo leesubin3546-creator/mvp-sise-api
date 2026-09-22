@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MVP 계산기 - 메이플 옥션 시세 리포터
 // @namespace    mvp-mesocalc
-// @version      1.3.0
+// @version      1.4.0
 // @description  옥션(auction.maplestory.nexon.com) 구매/시세 검색 결과의 개당 최저가·최근 체결가와 매물 목록을 읽어서 MVP 계산기/매물 찾기 백엔드로 보고합니다. 로그인은 항상 사용자 본인 브라우저 세션을 그대로 사용하며, 이 스크립트가 로그인을 대신하거나 자격 증명을 저장/전송하지 않습니다.
 // @author       -
 // @match        https://auction.maplestory.nexon.com/buy*
@@ -70,10 +70,74 @@
   }
 
   // ---- 매물 목록 파싱 (매물 찾기 페이지용) ----
-  // 목록의 각 행에서 이름/잠재·에디 등급/가격/찜/남은시간을 읽음.
-  // 잠재 옵션 상세 줄은 목록 화면에 없지만, 옥션이 필터를 이미 적용한 결과라
-  // 여기 잡힌 매물은 모두 검색 조건을 만족함.
-  function parseListingRows() {
+  // 1순위: 옥션이 검색 결과와 함께 내려준 툴팁 데이터를 React 컴포넌트 props에서 직접 읽음.
+  //   화면에는 스타포스/잠재/추옵이 안 보이지만(마우스 오버 툴팁에만 나옴), 그 툴팁을 그리는
+  //   데이터(item.toolTip.upgradeInfo)는 이미 목록 렌더링 시점에 들어와 있음 — 추가 요청 없이
+  //   스타포스·주문서 강화·추가 옵션·잠재/에디셔널 옵션 줄까지 그대로 가져올 수 있음.
+  // 2순위: props를 못 읽으면(옥션 프론트 구조 변경 등) 예전처럼 화면 텍스트를 긁음.
+
+  // 구매하기 버튼에서 위로 올라가며 item prop을 들고 있는 컴포넌트를 찾음
+  function fiberItem(el) {
+    const key = Object.keys(el).find(k =>
+      k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+    if (!key) return null;
+    let f = el[key];
+    for (let d = 0; d < 14 && f; d++) {
+      const p = f.memoizedProps;
+      if (p && p.item && p.item.itemName) return p.item;
+      f = f.return;
+    }
+    return null;
+  }
+
+  function parseListingRowsFiber() {
+    const btns = [...document.querySelectorAll('button')]
+      .filter(b => (b.textContent || '').trim() === '구매하기');
+    const num = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
+    // description 예: "잠재능력 : 레전드리" / "에디셔널 잠재능력 : 없음"
+    const gradeOf = o => {
+      if (!o || !o.grade) return null;
+      const m = String(o.description || '').split(':')[1];
+      const s = m ? m.trim() : '';
+      return s && s !== '없음' ? s : null;
+    };
+    const texts = o => ((o && o.entries) || [])
+      .map(e => String(e.text || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+    const rows = [];
+    for (const b of btns) {
+      const it = fiberItem(b);
+      if (!it) continue;
+      const tt = it.toolTip || {};
+      const up = tt.upgradeInfo || {};
+      const end = it.endDate ? new Date(it.endDate).getTime() : NaN;
+      rows.push({
+        name: it.itemName,
+        potentialGrade: gradeOf(up.potential),
+        additionalGrade: gradeOf(up.additionalPotential),
+        qty: it.quantity || 1,
+        pricePerUnit: num(it.pricePerItem),
+        priceTotal: num(it.price),
+        zzim: Number.isFinite(it.wishlistCount) ? it.wishlistCount : null,
+        remainMin: Number.isFinite(end) ? Math.max(0, Math.round((end - Date.now()) / 60000)) : null,
+        combatPower: Number.isFinite(it.attackPowerDiff) ? it.attackPowerDiff : null,
+        starforce: Number.isFinite(it.starforce) ? it.starforce : null,
+        starforceMax: up.starForce && Number.isFinite(up.starForce.max) ? up.starForce.max : null,
+        upgradeCount: Number.isFinite(it.currentUpgradeCount) ? it.currentUpgradeCount : null,
+        upgradeRemaining: up.scroll && Number.isFinite(up.scroll.remaining) ? up.scroll.remaining : null,
+        upgradeFailure: up.scroll && Number.isFinite(up.scroll.failure) ? up.scroll.failure : null,
+        reqLevel: typeof tt.reqLevel === 'number' ? tt.reqLevel : null,
+        icon: (it.itemIcon && it.itemIcon.fallBackUrl) || null,
+        potential: texts(up.potential),
+        additional: texts(up.additionalPotential),
+        exOption: texts(up.exOption),
+        detailed: true
+      });
+    }
+    return rows;
+  }
+
+  function parseListingRowsDom() {
     const btns = [...document.querySelectorAll('button')]
       .filter(b => (b.textContent || '').trim() === '구매하기');
     const rows = [];
@@ -109,10 +173,19 @@
         priceTotal: totM ? parseKoreanMeso(totM[1] + '메소') : null,
         zzim: zzimM ? parseInt(zzimM[1], 10) : null,
         remainMin: timeM ? parseInt(timeM[1], 10) * 60 + parseInt(timeM[2], 10) : null,
-        combatPower: combatM ? combatM[1].trim() : null
+        combatPower: combatM ? combatM[1].trim() : null,
+        detailed: false
       });
     }
     return rows;
+  }
+
+  function parseListingRows() {
+    try {
+      const rows = parseListingRowsFiber();
+      if (rows.length) return rows;
+    } catch (e) { /* 구조가 바뀌었으면 조용히 화면 긁기로 넘어감 */ }
+    return parseListingRowsDom();
   }
 
   function reportListings(rows, attempt) {

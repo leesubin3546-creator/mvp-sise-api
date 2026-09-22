@@ -29,8 +29,19 @@
 - 옵션 코드는 `bossDamagePercent`, `ignoreMonsterDefense`, `criticalDamagePercent`, `strPercent` 등
   32종을 `listings.html`의 `POT_OPTIONS`에 담아둠.
 
-잠재 옵션 상세 줄은 옥션 목록 화면에 표시되지 않아서 매물 표에도 안 나오지만, 옥션이 필터를 이미 적용한
-결과라 목록에 뜬 매물은 모두 조건을 만족함.
+### 매물 상세 옵션은 어떻게 가져오나
+
+옥션 목록 화면은 스타포스·잠재·추가 옵션을 글자로 안 보여줌(마우스 오버 툴팁에만 나옴). 대신 **그 툴팁을
+그리는 데이터가 검색 결과와 함께 이미 내려와 있음** — 유저스크립트가 매물 행의 React 컴포넌트 props에서
+`item.toolTip.upgradeInfo`를 읽어 옥션에 추가 요청 없이 그대로 가져옴:
+
+- `starForce` — 현재/최대 성수
+- `scroll` — 주문서 강화 사용/잔여/복구 가능 횟수
+- `potential`, `additionalPotential` — 등급 + 옵션 줄 전체
+- `exOption` — 추가 옵션 줄 전체
+
+매물 찾기 표에서 **행을 누르면** 이 네 가지가 펼쳐짐. props 구조가 바뀌면 예전처럼 화면 텍스트를 긁는
+방식으로 자동 폴백하는데, 그때는 상세 옵션 없이 이름·가격·등급만 나옴.
 
 검색 조건은 브라우저 `localStorage`에 저장됨(마지막 조건 자동 복원 + 이름 붙여 저장하는 프리셋).
 

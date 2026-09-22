@@ -5,7 +5,8 @@
 
 const express = require('express');
 const app = express();
-app.use(express.json());
+// 매물 목록은 한 건마다 잠재/추옵 줄까지 담겨 와서 기본 100kb로는 모자랄 수 있음
+app.use(express.json({ limit: '2mb' }));
 
 // CORS 허용 (정적 HTML 계산기 + 옥션 페이지의 유저스크립트에서 호출 가능하게)
 app.use((req, res, next) => {
