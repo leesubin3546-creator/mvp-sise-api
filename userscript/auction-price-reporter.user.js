@@ -131,6 +131,8 @@
         potential: texts(up.potential),
         additional: texts(up.additionalPotential),
         exOption: texts(up.exOption),
+        // 전체 월드로 검색하면 타 월드 매물이 섞여 나옴(구매 시 월드 이전 수수료가 붙음)
+        isMyWorld: typeof it.isMyWorld === 'boolean' ? it.isMyWorld : null,
         detailed: true
       });
     }

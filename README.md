@@ -25,6 +25,10 @@
 ```
 
 - 옵션 한 줄은 `코드` + `%1F`(U+001F) + `최소값`, 줄과 줄 사이는 `%1E`(U+001E)로 이어붙임.
+- **월드 범위는 이름과 뜻이 반대인 파라미터**라 주의: `isAllWorldSearchEnabled=true`가 오히려
+  **현재 월드만**(옥션의 "현재 월드 아이템만" 체크 = 검색 API의 `myWorldOnly:true`)이고, 파라미터를
+  빼는 게 전체 월드임. 이름만 보고 반대로 넣으면 옥션이 조용히 전체 월드를 돌려줌. 전체 월드로 검색하면
+  타 월드 매물이 섞여 나오는데(구매 시 월드 이전 수수료가 붙음), 매물 표에 `타 월드` 칩으로 표시함.
 - `enhancementOption::` 키의 콜론은 인코딩하면 안 먹어서, 키는 그대로 두고 값만 인코딩함.
 - 옵션 코드는 `bossDamagePercent`, `ignoreMonsterDefense`, `criticalDamagePercent`, `strPercent` 등
   32종을 `listings.html`의 `POT_OPTIONS`에 담아둠.

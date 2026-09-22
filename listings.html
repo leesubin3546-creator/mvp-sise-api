@@ -75,6 +75,7 @@
   .chip{font-size:10.5px;padding:2px 7px;border-radius:6px;background:#efe9dc;color:#6c5f4c;font-weight:700}
   .chip.sf{background:#fdf0d5;color:#8a6a1f}
   .chip.up{background:#e6eef5;color:#3d6280}
+  .chip.world{background:#ece4f3;color:#61478c}
   .chip.cp-up{background:#e4f1e2;color:#3f6b39}
   .chip.cp-down{background:#f6e3e3;color:#8c4040}
   tr.detail>td{background:#fbf8f2;padding:0;border-bottom:1px solid var(--line)}
@@ -182,6 +183,13 @@
           <option value="20" selected>20개</option>
           <option value="40">40개</option>
           <option value="60">60개</option>
+        </select>
+      </div>
+      <div class="col" style="max-width:190px">
+        <label>월드</label>
+        <select id="worldScope">
+          <option value="all">전체 월드</option>
+          <option value="mine">현재 월드만</option>
         </select>
       </div>
     </div>
@@ -359,6 +367,11 @@ function buildAuctionUrl(f){
   p.push('limit='+f.limit);
   p.push('sortType='+f.sortType);
   p.push('itemCategory='+f.category);
+  // 이름과 뜻이 반대인 파라미터 — 실제로 확인해보니
+  //   isAllWorldSearchEnabled=true  → 현재 월드 매물만 (API 요청은 myWorldOnly:true)
+  //   파라미터 없음(기본)           → 전체 월드
+  // 이름만 보고 반대로 넣으면 조용히 전체 월드가 나오니 주의.
+  if(f.worldScope==='mine')p.push('isAllWorldSearchEnabled=true');
   // 가격은 minPrice/maxPrice가 아니라 price::min / price::max 임
   if(f.minPrice)p.push('price::min='+f.minPrice);
   if(f.maxPrice)p.push('price::max='+f.maxPrice);
@@ -399,6 +412,7 @@ function readFilters(){
     sfMin:$('sfMin').value, sfMax:$('sfMax').value,
     potGrade:$('potGrade').value, addGrade:$('addGrade').value,
     sortType:$('sortType').value, limit:$('limit').value,
+    worldScope:$('worldScope').value,
     potAddAll:$('potAddAll').checked, addAddAll:$('addAddAll').checked,
     upgradeMin:$('upgradeMin').value, upgradeMax:$('upgradeMax').value,
     potRows:readOptRows('potRows'), addRows:readOptRows('addRows'),
@@ -418,6 +432,7 @@ function applyFilters(f){
   $('potGrade').value=f.potGrade||''; $('addGrade').value=f.addGrade||'';
   $('sortType').value=f.sortType||'PRICE_PER_ITEM_ASC';
   $('limit').value=f.limit||'20';
+  $('worldScope').value=f.worldScope||'all';
   $('potAddAll').checked=f.potAddAll!==false;
   $('addAddAll').checked=f.addAddAll!==false;
   $('upgradeMin').value=f.upgradeMin||''; $('upgradeMax').value=f.upgradeMax||'';
@@ -571,6 +586,7 @@ function sfLabel(r){
 // 이름 아래 한 줄 요약 — 굳이 펼치지 않아도 눈에 들어와야 하는 것들
 function chips(r){
   const c=[];
+  if(r.isMyWorld===false)c.push('<span class="chip world">타 월드</span>');
   if(r.starforce)c.push(`<span class="chip sf">★${r.starforce}${r.starforceMax?'/'+r.starforceMax:''}</span>`);
   if(r.upgradeCount)c.push(`<span class="chip up">주문서 ${r.upgradeCount}회</span>`);
   if(r.upgradeRemaining)c.push(`<span class="chip up">잔여 ${r.upgradeRemaining}회</span>`);
@@ -615,7 +631,7 @@ $('addAdd').onclick=()=>{addOptRow('addRows');};
 $('addEx').onclick=()=>{addOptRow('exRows');};
 $('addScroll').onclick=()=>{addOptRow('scrollRows');};
 ['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',
- 'sfMin','sfMax','potGrade','addGrade','sortType','limit','upgradeMin','upgradeMax',
+ 'sfMin','sfMax','potGrade','addGrade','sortType','limit','worldScope','upgradeMin','upgradeMax',
  'potAddAll','addAddAll']
   .forEach(id=>$(id).addEventListener('input',saveLast));
 (function init(){
