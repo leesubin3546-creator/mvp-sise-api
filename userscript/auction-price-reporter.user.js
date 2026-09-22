@@ -8,6 +8,7 @@
 // @match        https://auction.maplestory.nexon.com/price*
 // @grant        GM_xmlhttpRequest
 // @connect      mvp-sise-api.onrender.com
+// @connect      localhost
 // @run-at       document-idle
 // @updateURL    https://mvp-sise-api.onrender.com/userscript/auction-price-reporter.user.js
 // @downloadURL  https://mvp-sise-api.onrender.com/userscript/auction-price-reporter.user.js
@@ -16,8 +17,12 @@
 (function () {
   'use strict';
 
-  // MVP 계산기 백엔드 주소. 계산기를 다른 곳에 배포했다면 이 값만 바꾸면 됨.
-  const BACKEND = 'https://mvp-sise-api.onrender.com';
+  // MVP 계산기 백엔드 주소. 기본은 배포 주소지만, 계산기/매물 찾기가 옥션 URL에 심어 보낸
+  // mvpcalcBackend 값이 아래 허용 목록에 있으면 그쪽으로 보고함(로컬 개발용).
+  // 허용 목록 밖 주소는 무시 — 임의 사이트로 데이터가 나가지 않게 하려는 것.
+  const ALLOWED_BACKENDS = ['https://mvp-sise-api.onrender.com', 'http://localhost:3000'];
+  const requested = new URLSearchParams(location.search).get('mvpcalcBackend');
+  const BACKEND = ALLOWED_BACKENDS.includes(requested) ? requested : ALLOWED_BACKENDS[0];
 
   // 이 페이지를 봤다는 것 자체를 백엔드에 알림(설치/동작 여부 진단용).
   // 아이템 검색 결과가 없어도, 콜드스타트 중이어도 항상 시도함.

@@ -115,6 +115,17 @@
     </div>
 
     <div class="row" style="margin-top:14px">
+      <div class="col" style="max-width:120px"><label>레벨 최소</label><input id="levelMin" type="number" placeholder="예: 200"></div>
+      <div class="col" style="max-width:120px"><label>레벨 최대</label><input id="levelMax" type="number" placeholder="예: 250"></div>
+      <div class="col" style="max-width:190px">
+        <label>직업군</label>
+        <select id="jobClass"></select>
+      </div>
+      <div class="col" style="max-width:150px"><label>주문서 강화 잔여 최소</label><input id="upgradeMin" type="number" placeholder="예: 1"></div>
+      <div class="col" style="max-width:150px"><label>주문서 강화 잔여 최대</label><input id="upgradeMax" type="number" placeholder="예: 8"></div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
       <div class="col" style="max-width:190px">
         <label>잠재등급</label>
         <select id="potGrade">
@@ -157,16 +168,34 @@
     </div>
 
     <div style="margin-top:18px">
-      <label>잠재능력 옵션 (여러 줄 = 모두 만족하는 매물만)</label>
+      <label>잠재능력 옵션 (여러 줄 = 모두 만족하는 매물만)
+        <span style="float:right;font-weight:500"><input type="checkbox" id="potAddAll" checked style="width:auto;margin-right:4px">합산</span>
+      </label>
       <div id="potRows"></div>
       <button type="button" class="btn ghost" id="addPot" style="padding:7px 12px;font-size:12.5px">＋ 잠재 옵션 추가</button>
     </div>
 
     <div style="margin-top:18px">
-      <label>에디셔널 잠재능력 옵션</label>
+      <label>에디셔널 잠재능력 옵션
+        <span style="float:right;font-weight:500"><input type="checkbox" id="addAddAll" checked style="width:auto;margin-right:4px">합산</span>
+      </label>
       <div id="addRows"></div>
       <button type="button" class="btn ghost" id="addAdd" style="padding:7px 12px;font-size:12.5px">＋ 에디 옵션 추가</button>
     </div>
+
+    <details style="margin-top:18px">
+      <summary style="cursor:pointer;font-size:12.5px;color:var(--sub);font-weight:600">⚙ 추가 옵션 · 주문서 강화 (고급)</summary>
+      <div style="margin-top:12px">
+        <label>추가 옵션</label>
+        <div id="exRows"></div>
+        <button type="button" class="btn ghost" id="addEx" style="padding:7px 12px;font-size:12.5px">＋ 추가 옵션</button>
+      </div>
+      <div style="margin-top:16px">
+        <label>주문서 강화로 오른 수치</label>
+        <div id="scrollRows"></div>
+        <button type="button" class="btn ghost" id="addScroll" style="padding:7px 12px;font-size:12.5px">＋ 주문서 강화 옵션</button>
+      </div>
+    </details>
 
     <div class="btnrow">
       <button class="btn" id="searchBtn">🔎 옥션에서 검색</button>
@@ -233,8 +262,31 @@ const POT_OPTIONS=[
   ['skillLevelIncrease','4차 이하 스킬 레벨 증가'],
   ['hpRecovery','공격 시 HP 회복'],
   ['mpRecovery','공격 시 MP 회복'],
-  ['hpRecoveryRate','HP 회복 아이템 및 스킬 효율 증가']
+  ['hpRecoveryRate','HP 회복 아이템 및 스킬 효율 증가'],
+  ['strPerLevel','캐릭터 9레벨 당 STR 증가'],
+  ['dexPerLevel','캐릭터 9레벨 당 DEX 증가'],
+  ['intPerLevel','캐릭터 9레벨 당 INT 증가'],
+  ['lukPerLevel','캐릭터 9레벨 당 LUK 증가']
 ];
+
+// 추가 옵션 (enhancementOption::additionalOption::optionRows)
+const EX_OPTIONS=[
+  ['exStr','STR'],['exDex','DEX'],['exInt','INT'],['exLuk','LUK'],
+  ['exPhysicalAttack','공격력'],['exMagicAttack','마력'],
+  ['exBossDamagePercent','보스 데미지 %'],['exDamagePercent','데미지 %'],
+  ['exAllStatsPercent','올스탯 %'],['exMaxHp','최대 HP'],['exMaxMp','최대 MP'],
+  ['exReducedLevelReq','착용 제한 레벨 감소']
+];
+
+// 주문서 강화 (enhancementOption::scrollUpgrade::optionRows)
+const SCROLL_OPTIONS=[
+  ['totalStr','STR'],['totalDex','DEX'],['totalInt','INT'],['totalLuk','LUK'],
+  ['totalPhysicalAttack','공격력'],['totalMagicAttack','마력'],
+  ['totalMaxHp','최대 HP'],['totalMaxMp','최대 MP'],
+  ['totalJump','점프력'],['totalSpeed','이동속도']
+];
+
+const JOB_CLASSES=[['','전체'],['warrior','전사'],['mage','마법사'],['archer','궁수'],['thief','도적'],['pirate','해적']];
 
 const $=id=>document.getElementById(id);
 const setStatus=m=>{$('status').textContent=m;};
@@ -251,13 +303,14 @@ function meso(n){
 }
 
 // ---- 옵션 줄 UI ----
+const OPT_LIST={potRows:POT_OPTIONS, addRows:POT_OPTIONS, exRows:EX_OPTIONS, scrollRows:SCROLL_OPTIONS};
 function addOptRow(wrapId,preset){
   const wrap=$(wrapId);
   const div=document.createElement('div');
   div.className='optrow';
   const sel=document.createElement('select');
   sel.innerHTML='<option value="">— 옵션 선택 —</option>'+
-    POT_OPTIONS.map(([c,k])=>`<option value="${c}">${k}</option>`).join('');
+    (OPT_LIST[wrapId]||POT_OPTIONS).map(([c,k])=>`<option value="${c}">${k}</option>`).join('');
   const val=document.createElement('input');
   val.type='number'; val.placeholder='최소값';
   const del=document.createElement('span');
@@ -287,15 +340,32 @@ function buildAuctionUrl(f){
   p.push('limit='+f.limit);
   p.push('sortType='+f.sortType);
   p.push('itemCategory='+f.category);
-  if(f.minPrice)p.push('minPrice='+f.minPrice);
-  if(f.maxPrice)p.push('maxPrice='+f.maxPrice);
+  // 가격은 minPrice/maxPrice가 아니라 price::min / price::max 임
+  if(f.minPrice)p.push('price::min='+f.minPrice);
+  if(f.maxPrice)p.push('price::max='+f.maxPrice);
+  if(f.levelMin)p.push('basicOption::levelMin='+f.levelMin);
+  if(f.levelMax)p.push('basicOption::levelMax='+f.levelMax);
+  if(f.jobClass)p.push('basicOption::jobClass='+f.jobClass);
   if(f.sfMin)p.push('enhancementOption::starforceMin='+f.sfMin);
   if(f.sfMax)p.push('enhancementOption::starforceMax='+f.sfMax);
   if(f.potGrade)p.push('enhancementOption::potentialGrade='+f.potGrade);
   if(f.addGrade)p.push('enhancementOption::additionalPotentialGrade='+f.addGrade);
   const enc=rows=>encodeURIComponent(rows.map(r=>r.code+'\x1F'+r.val).join('\x1E'));
-  if(f.potRows.length)p.push('enhancementOption::potentialFilters::optionRows='+enc(f.potRows));
-  if(f.addRows.length)p.push('enhancementOption::additionalPotentialFilters::optionRows='+enc(f.addRows));
+  if(f.potRows.length){
+    p.push('enhancementOption::potentialFilters::optionRows='+enc(f.potRows));
+    p.push('enhancementOption::potentialFilters::isAddAll='+f.potAddAll);
+  }
+  if(f.addRows.length){
+    p.push('enhancementOption::additionalPotentialFilters::optionRows='+enc(f.addRows));
+    p.push('enhancementOption::additionalPotentialFilters::isAddAll='+f.addAddAll);
+  }
+  if(f.exRows.length)p.push('enhancementOption::additionalOption::optionRows='+enc(f.exRows));
+  if(f.scrollRows.length)p.push('enhancementOption::scrollUpgrade::optionRows='+enc(f.scrollRows));
+  if(f.upgradeMin)p.push('enhancementOption::remainUpgradeCountMin='+f.upgradeMin);
+  if(f.upgradeMax)p.push('enhancementOption::remainUpgradeCountMax='+f.upgradeMax);
+  // 유저스크립트가 어느 백엔드로 보고할지 알려줌(로컬 개발 시 localhost로 받기 위함).
+  // 옥션은 모르는 파라미터를 무시하고, 유저스크립트는 허용 목록에 있는 주소만 받아들임.
+  p.push('mvpcalcBackend='+encodeURIComponent(AUCTION_BACKEND));
   return 'https://auction.maplestory.nexon.com/buy?'+p.join('&');
 }
 function readFilters(){
@@ -305,10 +375,15 @@ function readFilters(){
     category:$('category').value,
     minPrice:$('minPrice').value.replace(/[^\d]/g,''),
     maxPrice:$('maxPrice').value.replace(/[^\d]/g,''),
+    levelMin:$('levelMin').value, levelMax:$('levelMax').value,
+    jobClass:$('jobClass').value,
     sfMin:$('sfMin').value, sfMax:$('sfMax').value,
     potGrade:$('potGrade').value, addGrade:$('addGrade').value,
     sortType:$('sortType').value, limit:$('limit').value,
-    potRows:readOptRows('potRows'), addRows:readOptRows('addRows')
+    potAddAll:$('potAddAll').checked, addAddAll:$('addAddAll').checked,
+    upgradeMin:$('upgradeMin').value, upgradeMax:$('upgradeMax').value,
+    potRows:readOptRows('potRows'), addRows:readOptRows('addRows'),
+    exRows:readOptRows('exRows'), scrollRows:readOptRows('scrollRows')
   };
 }
 function applyFilters(f){
@@ -318,13 +393,20 @@ function applyFilters(f){
   $('category').value=f.category||'ARMOR';
   $('minPrice').value=f.minPrice||'';
   $('maxPrice').value=f.maxPrice||'';
+  $('levelMin').value=f.levelMin||''; $('levelMax').value=f.levelMax||'';
+  $('jobClass').value=f.jobClass||'';
   $('sfMin').value=f.sfMin||''; $('sfMax').value=f.sfMax||'';
   $('potGrade').value=f.potGrade||''; $('addGrade').value=f.addGrade||'';
   $('sortType').value=f.sortType||'PRICE_PER_ITEM_ASC';
   $('limit').value=f.limit||'20';
-  $('potRows').innerHTML=''; $('addRows').innerHTML='';
+  $('potAddAll').checked=f.potAddAll!==false;
+  $('addAddAll').checked=f.addAddAll!==false;
+  $('upgradeMin').value=f.upgradeMin||''; $('upgradeMax').value=f.upgradeMax||'';
+  ['potRows','addRows','exRows','scrollRows'].forEach(id=>{$(id).innerHTML='';});
   (f.potRows||[]).forEach(r=>addOptRow('potRows',r));
   (f.addRows||[]).forEach(r=>addOptRow('addRows',r));
+  (f.exRows||[]).forEach(r=>addOptRow('exRows',r));
+  (f.scrollRows||[]).forEach(r=>addOptRow('scrollRows',r));
 }
 
 // ---- 조건 저장(localStorage, 이 브라우저에만) ----
@@ -451,9 +533,14 @@ function render(d){
 // ---- 초기화 ----
 $('addPot').onclick=()=>{addOptRow('potRows');};
 $('addAdd').onclick=()=>{addOptRow('addRows');};
-['keyword','exact','category','minPrice','maxPrice','sfMin','sfMax','potGrade','addGrade','sortType','limit']
+$('addEx').onclick=()=>{addOptRow('exRows');};
+$('addScroll').onclick=()=>{addOptRow('scrollRows');};
+['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',
+ 'sfMin','sfMax','potGrade','addGrade','sortType','limit','upgradeMin','upgradeMax',
+ 'potAddAll','addAddAll']
   .forEach(id=>$(id).addEventListener('input',saveLast));
 (function init(){
+  $('jobClass').innerHTML=JOB_CLASSES.map(([v,k])=>`<option value="${v}">${k}</option>`).join('');
   let last=null;
   try{ last=JSON.parse(localStorage.getItem(LS_LAST)); }catch(e){}
   if(last)applyFilters(last);
