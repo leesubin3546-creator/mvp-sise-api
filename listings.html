@@ -76,6 +76,16 @@
   .chip.sf{background:#fdf0d5;color:#8a6a1f}
   .chip.up{background:#e6eef5;color:#3d6280}
   .chip.world{background:#ece4f3;color:#61478c}
+  /* 지금 걸린 조건 줄 */
+  .applied{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px;
+    padding:10px 12px;background:#faf6ee;border:1px solid var(--line);border-radius:9px}
+  .applied-label{font-size:11px;color:var(--sub);font-weight:700;margin-right:2px}
+  .fchip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;
+    padding:4px 8px;border-radius:7px;background:#eee7d9;color:#6b5c47}
+  .fchip.narrow{background:#f6e3d6;color:#8a5326}
+  .fchip x{cursor:pointer;font-size:12px;opacity:.55;font-style:normal}
+  .fchip x:hover{opacity:1}
+  .applied .none{font-size:11.5px;color:var(--sub)}
   .chip.cp-up{background:#e4f1e2;color:#3f6b39}
   .chip.cp-down{background:#f6e3e3;color:#8c4040}
   tr.detail>td{background:#fbf8f2;padding:0;border-bottom:1px solid var(--line)}
@@ -223,6 +233,15 @@
         <button type="button" class="btn ghost" id="addScroll" style="padding:7px 12px;font-size:12.5px">＋ 주문서 강화 옵션</button>
       </div>
     </details>
+
+    <!-- 지금 실제로 걸려 있는 조건. 접혀 있는 칸이나 저장된 이전 조건 때문에 "분명 있는 아이템인데
+         0건" 이 나오는 걸 막으려고, 검색 직전에 눈에 보이게 깔아둠. -->
+    <div class="applied" id="appliedWrap">
+      <span class="applied-label">지금 걸린 조건</span>
+      <span id="appliedChips"></span>
+      <button type="button" class="btn ghost" id="resetAllBtn"
+        style="padding:5px 10px;font-size:11.5px;margin-left:auto">↺ 조건 전체 초기화</button>
+    </div>
 
     <div class="btnrow">
       <button class="btn" id="searchBtn">🔎 옥션에서 검색</button>
@@ -372,14 +391,17 @@ function buildAuctionUrl(f){
   //   파라미터 없음(기본)           → 전체 월드
   // 이름만 보고 반대로 넣으면 조용히 전체 월드가 나오니 주의.
   if(f.worldScope==='mine')p.push('isAllWorldSearchEnabled=true');
+  // 숫자 칸은 "0"도 유효한 값이라 truthy 검사를 쓰면 안 됨(문자열 "0"은 truthy라 그동안
+  // 0도 그대로 들어가긴 했지만, 반대로 sfMax=0 같은 걸 놓칠 수 있는 형태였음)
+  const has=v=>v!==''&&v!=null;
   // 가격은 minPrice/maxPrice가 아니라 price::min / price::max 임
-  if(f.minPrice)p.push('price::min='+f.minPrice);
-  if(f.maxPrice)p.push('price::max='+f.maxPrice);
-  if(f.levelMin)p.push('basicOption::levelMin='+f.levelMin);
-  if(f.levelMax)p.push('basicOption::levelMax='+f.levelMax);
+  if(has(f.minPrice))p.push('price::min='+f.minPrice);
+  if(has(f.maxPrice))p.push('price::max='+f.maxPrice);
+  if(has(f.levelMin))p.push('basicOption::levelMin='+f.levelMin);
+  if(has(f.levelMax))p.push('basicOption::levelMax='+f.levelMax);
   if(f.jobClass)p.push('basicOption::jobClass='+f.jobClass);
-  if(f.sfMin)p.push('enhancementOption::starforceMin='+f.sfMin);
-  if(f.sfMax)p.push('enhancementOption::starforceMax='+f.sfMax);
+  if(has(f.sfMin))p.push('enhancementOption::starforceMin='+f.sfMin);
+  if(has(f.sfMax))p.push('enhancementOption::starforceMax='+f.sfMax);
   if(f.potGrade)p.push('enhancementOption::potentialGrade='+f.potGrade);
   if(f.addGrade)p.push('enhancementOption::additionalPotentialGrade='+f.addGrade);
   const enc=rows=>encodeURIComponent(rows.map(r=>r.code+'\x1F'+r.val).join('\x1E'));
@@ -393,8 +415,8 @@ function buildAuctionUrl(f){
   }
   if(f.exRows.length)p.push('enhancementOption::additionalOption::optionRows='+enc(f.exRows));
   if(f.scrollRows.length)p.push('enhancementOption::scrollUpgrade::optionRows='+enc(f.scrollRows));
-  if(f.upgradeMin)p.push('enhancementOption::remainUpgradeCountMin='+f.upgradeMin);
-  if(f.upgradeMax)p.push('enhancementOption::remainUpgradeCountMax='+f.upgradeMax);
+  if(has(f.upgradeMin))p.push('enhancementOption::remainUpgradeCountMin='+f.upgradeMin);
+  if(has(f.upgradeMax))p.push('enhancementOption::remainUpgradeCountMax='+f.upgradeMax);
   // 유저스크립트가 어느 백엔드로 보고할지 알려줌(로컬 개발 시 localhost로 받기 위함).
   // 옥션은 모르는 파라미터를 무시하고, 유저스크립트는 허용 목록에 있는 주소만 받아들임.
   p.push('mvpcalcBackend='+encodeURIComponent(AUCTION_BACKEND));
@@ -443,8 +465,57 @@ function applyFilters(f){
   (f.scrollRows||[]).forEach(r=>addOptRow('scrollRows',r));
 }
 
+// ---- 지금 걸린 조건 보여주기 ----
+// 이게 없으면 예전에 걸어둔 직업군·스타포스·잠재등급이 localStorage에 남아 조용히 따라붙어서,
+// 옥션에는 1000건 넘게 있는 아이템이 여기선 0건으로 나옴(실제로 겪은 문제).
+const GRADE_LABEL={legendary:'레전드리',unique:'유니크',epic:'에픽',rare:'레어',normal:'노멀'};
+const DEFAULTS={keyword:'',exact:'false',category:'ARMOR',minPrice:'',maxPrice:'',
+  levelMin:'',levelMax:'',jobClass:'',sfMin:'',sfMax:'',potGrade:'',addGrade:'',
+  sortType:'PRICE_PER_ITEM_ASC',limit:'20',worldScope:'all',upgradeMin:'',upgradeMax:''};
+
+function activeChips(){
+  const f=readFilters(), out=[];
+  const jobLabel=$('jobClass').options[$('jobClass').selectedIndex]?.text;
+  const range=(a,b)=>`${a||'0'} ~ ${b||'∞'}`;
+  // narrow=true 면 "결과를 줄이는" 조건 — 0건일 때 범인일 가능성이 높은 것들
+  const add=(text,ids,narrow)=>out.push({text,ids,narrow});
+  add('분류 '+$('category').options[$('category').selectedIndex].text,['category'],f.category!=='ALL_CATEGORIES');
+  if(f.exact==='true')add('정확히 일치',['exact'],false);
+  if(f.worldScope==='mine')add('현재 월드만',['worldScope'],true);
+  if(f.jobClass)add('직업군 '+jobLabel,['jobClass'],true);
+  if(f.minPrice!==''||f.maxPrice!=='')add('가격 '+range(f.minPrice,f.maxPrice),['minPrice','maxPrice'],true);
+  if(f.levelMin!==''||f.levelMax!=='')add('레벨 '+range(f.levelMin,f.levelMax),['levelMin','levelMax'],true);
+  if(f.sfMin!==''||f.sfMax!=='')add('스타포스 '+range(f.sfMin,f.sfMax),['sfMin','sfMax'],true);
+  if(f.potGrade)add('잠재 '+(GRADE_LABEL[f.potGrade]||f.potGrade),['potGrade'],true);
+  if(f.addGrade)add('에디 '+(GRADE_LABEL[f.addGrade]||f.addGrade),['addGrade'],true);
+  if(f.upgradeMin!==''||f.upgradeMax!=='')add('주문서 잔여 '+range(f.upgradeMin,f.upgradeMax),['upgradeMin','upgradeMax'],true);
+  [['potRows','잠재 옵션'],['addRows','에디 옵션'],['exRows','추가 옵션'],['scrollRows','주문서 강화']]
+    .forEach(([id,name])=>{ if(f[id].length)out.push({text:`${name} ${f[id].length}줄`,rows:id,narrow:true}); });
+  return out;
+}
+
+function renderApplied(){
+  const chips=activeChips();
+  $('appliedChips').innerHTML=chips.map((c,i)=>
+    `<span class="fchip${c.narrow?' narrow':''}" data-i="${i}">${esc(c.text)}<x title="이 조건 해제">✕</x></span>`
+  ).join('')||'<span class="none">아이템명 말고 따로 걸린 조건 없음</span>';
+  $('appliedChips').querySelectorAll('.fchip x').forEach(x=>{
+    x.onclick=()=>{
+      const c=chips[+x.parentElement.dataset.i];
+      if(c.rows)$(c.rows).innerHTML='';
+      else c.ids.forEach(id=>{$(id).value=DEFAULTS[id];});
+      saveLast(); renderApplied();
+    };
+  });
+}
+
+$('resetAllBtn').onclick=()=>{
+  applyFilters({keyword:$('keyword').value}); // 아이템명은 남겨둠 — 보통 그것만 다시 검색하고 싶어함
+  saveLast(); renderApplied(); setStatus('조건을 기본값으로 되돌렸어 (아이템명은 그대로 뒀어).');
+};
+
 // ---- 조건 저장(localStorage, 이 브라우저에만) ----
-function saveLast(){ try{localStorage.setItem(LS_LAST,JSON.stringify(readFilters()));}catch(e){} }
+function saveLast(){ try{localStorage.setItem(LS_LAST,JSON.stringify(readFilters()));}catch(e){} renderApplied(); }
 function loadPresets(){ try{return JSON.parse(localStorage.getItem(LS_PRESETS))||[];}catch(e){return[];} }
 function renderPresets(){
   const ps=loadPresets();
@@ -543,7 +614,16 @@ function render(d){
   const rows=d.rows||[];
   $('resultMeta').textContent=rows.length?`· ${rows.length}건 표시 (전체 ${d.total}건) · ${new Date(d.ts).toLocaleTimeString('ko-KR')} 기준`:'';
   if(!rows.length){
-    $('resultWrap').innerHTML='<div class="empty">조건에 맞는 매물이 없어. 필터를 조금 완화해봐.</div>';
+    // 0건일 때 "왜 0건인지"를 바로 보여줌 — 대개 이름 문제가 아니라 남아있던 조건 때문임
+    const narrow=activeChips().filter(c=>c.narrow);
+    $('resultWrap').innerHTML=`<div class="empty">
+      조건에 맞는 매물이 없어.
+      ${narrow.length?`<div style="margin-top:10px">옥션에 그 아이템이 있는데도 0건이면, 아래 조건이 걸러낸 거야:
+        <div class="chips" style="justify-content:center;margin-top:8px">
+          ${narrow.map(c=>`<span class="chip">${esc(c.text)}</span>`).join('')}</div>
+        <div style="margin-top:8px">위쪽 <b>지금 걸린 조건</b> 줄에서 ✕로 하나씩 빼거나 <b>조건 전체 초기화</b>를 눌러봐.</div>
+        </div>`:'<div style="margin-top:8px">아이템명 철자를 확인해보거나 <b>부분 일치</b>로 바꿔봐.</div>'}
+      </div>`;
     return;
   }
   const body=rows.map((r,i)=>{
@@ -641,6 +721,7 @@ $('addScroll').onclick=()=>{addOptRow('scrollRows');};
   if(last)applyFilters(last);
   if(!$('potRows').children.length)addOptRow('potRows');
   renderPresets();
+  renderApplied();
   refreshUserscriptStatus();
 })();
 </script>
