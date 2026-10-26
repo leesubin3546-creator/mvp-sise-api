@@ -279,6 +279,22 @@
         <div id="scrollRows"></div>
         <button type="button" class="btn ghost" id="addScroll" style="padding:7px 12px;font-size:12.5px">＋ 주문서 강화 옵션</button>
       </div>
+      <div style="margin-top:16px">
+        <label>가위 잔여 횟수 <span style="font-weight:500;color:var(--sub)">(옥션 표기는 "사용 횟수"지만 실제로는 남은 횟수 기준)</span></label>
+        <div class="row">
+          <div class="col" style="max-width:150px"><input id="cutMin" type="text" inputmode="numeric" placeholder="예: 10"></div>
+          <div class="col" style="max-width:150px"><input id="cutMax" type="text" inputmode="numeric" placeholder="최대"></div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label>기타 조건</label>
+        <div class="chips" style="gap:6px 14px">
+          <label class="bitem"><input type="checkbox" id="optUncuttable">가위 사용 횟수 미부여</label>
+          <label class="bitem"><input type="checkbox" id="optBinded">장착 시 교환 불가</label>
+          <label class="bitem"><input type="checkbox" id="optExPass">추가 옵션 추출 가능</label>
+          <label class="bitem"><input type="checkbox" id="optPotPass">잠재능력 추출 가능</label>
+        </div>
+      </div>
     </details>
 
     <!-- 지금 실제로 걸려 있는 조건. 접혀 있는 칸이나 저장된 이전 조건 때문에 "분명 있는 아이템인데
@@ -516,6 +532,17 @@ function buildAuctionUrl(f){
   if(f.scrollRows.length)p.push('enhancementOption::scrollUpgrade::optionRows='+enc(f.scrollRows));
   if(has(f.upgradeMin))p.push('enhancementOption::remainUpgradeCountMin='+f.upgradeMin);
   if(has(f.upgradeMax))p.push('enhancementOption::remainUpgradeCountMax='+f.upgradeMax);
+  // 기타 조건은 개별 불린 파라미터가 아니라, 켜진 것들의 이름을 쉼표로 이어 붙인 목록 하나임.
+  // 가위 잔여 횟수 범위도 목록에 'cuttableCount' 가 같이 들어가야 적용됨 — 범위만 보내면 무시됨.
+  const act=[];
+  if(f.optUncuttable)act.push('uncuttable');
+  if(f.optBinded)act.push('isBindedWhenEquipped');
+  if(f.optExPass)act.push('isExPassDown');
+  if(f.optPotPass)act.push('isPotentialPassDown');
+  if(has(f.cutMin)||has(f.cutMax))act.push('cuttableCount');
+  if(act.length)p.push('etcOption::activeOptions='+act.join(','));
+  if(has(f.cutMin))p.push('etcOption::cuttableCountMin='+f.cutMin);
+  if(has(f.cutMax))p.push('etcOption::cuttableCountMax='+f.cutMax);
   // 유저스크립트가 어느 백엔드로 보고할지 알려줌(로컬 개발 시 localhost로 받기 위함).
   // 옥션은 모르는 파라미터를 무시하고, 유저스크립트는 허용 목록에 있는 주소만 받아들임.
   p.push('mvpcalcBackend='+encodeURIComponent(AUCTION_BACKEND));
@@ -539,6 +566,9 @@ function readFilters(){
     worldScope:$('worldScope').value, sampleN:$('sampleN').value,
     potAddAll:$('potAddAll').checked, addAddAll:$('addAddAll').checked,
     upgradeMin:$('upgradeMin').value, upgradeMax:$('upgradeMax').value,
+    cutMin:$('cutMin').value, cutMax:$('cutMax').value,
+    optUncuttable:$('optUncuttable').checked, optBinded:$('optBinded').checked,
+    optExPass:$('optExPass').checked, optPotPass:$('optPotPass').checked,
     potRows:readOptRows('potRows'), addRows:readOptRows('addRows'),
     exRows:readOptRows('exRows'), scrollRows:readOptRows('scrollRows')
   };
@@ -561,6 +591,9 @@ function applyFilters(f){
   $('potAddAll').checked=f.potAddAll!==false;
   $('addAddAll').checked=f.addAddAll!==false;
   $('upgradeMin').value=f.upgradeMin||''; $('upgradeMax').value=f.upgradeMax||'';
+  $('cutMin').value=f.cutMin||''; $('cutMax').value=f.cutMax||'';
+  $('optUncuttable').checked=!!f.optUncuttable; $('optBinded').checked=!!f.optBinded;
+  $('optExPass').checked=!!f.optExPass; $('optPotPass').checked=!!f.optPotPass;
   ['potRows','addRows','exRows','scrollRows'].forEach(id=>{$(id).innerHTML='';});
   (f.potRows||[]).forEach(r=>addOptRow('potRows',r));
   (f.addRows||[]).forEach(r=>addOptRow('addRows',r));
@@ -575,7 +608,8 @@ const GRADE_LABEL={legendary:'레전드리',unique:'유니크',epic:'에픽',rar
 const DEFAULTS={keyword:'',exact:'false',category:'ARMOR',minPrice:'',maxPrice:'',
   levelMin:'',levelMax:'',jobClass:'',sfMin:'',sfMax:'',potGrade:'',addGrade:'',
   sortType:'PRICE_PER_ITEM_ASC',limit:'20',worldScope:'all',sampleN:'5',
-  upgradeMin:'',upgradeMax:''};
+  upgradeMin:'',upgradeMax:'',cutMin:'',cutMax:'',
+  optUncuttable:false,optBinded:false,optExPass:false,optPotPass:false};
 
 function activeChips(){
   const f=readFilters(), out=[];
@@ -593,6 +627,10 @@ function activeChips(){
   if(f.potGrade)add('잠재 '+(GRADE_LABEL[f.potGrade]||f.potGrade),['potGrade'],true);
   if(f.addGrade)add('에디 '+(GRADE_LABEL[f.addGrade]||f.addGrade),['addGrade'],true);
   if(f.upgradeMin!==''||f.upgradeMax!=='')add('주문서 잔여 '+range(f.upgradeMin,f.upgradeMax),['upgradeMin','upgradeMax'],true);
+  if(f.cutMin!==''||f.cutMax!=='')add('가위 잔여 '+range(f.cutMin,f.cutMax),['cutMin','cutMax'],true);
+  [['optUncuttable','가위 미부여'],['optBinded','장착 시 교환 불가'],
+   ['optExPass','추옵 추출 가능'],['optPotPass','잠재 추출 가능']]
+    .forEach(([id,name])=>{ if(f[id])out.push({text:name,ids:[id],narrow:true,bool:true}); });
   [['potRows','잠재 옵션'],['addRows','에디 옵션'],['exRows','추가 옵션'],['scrollRows','주문서 강화']]
     .forEach(([id,name])=>{ if(f[id].length)out.push({text:`${name} ${f[id].length}줄`,rows:id,narrow:true}); });
   return out;
@@ -607,6 +645,7 @@ function renderApplied(){
     x.onclick=()=>{
       const c=chips[+x.parentElement.dataset.i];
       if(c.rows)$(c.rows).innerHTML='';
+      else if(c.bool)c.ids.forEach(id=>{$(id).checked=false;});
       else c.ids.forEach(id=>{$(id).value=DEFAULTS[id];});
       saveLast(); renderApplied();
     };
@@ -1159,8 +1198,11 @@ function loadExWeights(){
 
 ['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',
  'sfMin','sfMax','potGrade','addGrade','sortType','limit','worldScope','sampleN','upgradeMin','upgradeMax',
+ 'cutMin','cutMax','optUncuttable','optBinded','optExPass','optPotPass',
  'potAddAll','addAddAll']
   .forEach(id=>$(id).addEventListener('input',saveLast));
+['optUncuttable','optBinded','optExPass','optPotPass']
+  .forEach(id=>$(id).addEventListener('change',saveLast));
 (function init(){
   $('jobClass').innerHTML=JOB_CLASSES.map(([v,k])=>`<option value="${v}">${k}</option>`).join('');
   let last=null;

@@ -203,10 +203,16 @@ npm audit fix && npm install
 여기서 잔여/최대를 뽑아 `cut`, 교환 조건 줄을 `tradeNote` 로 보냄. 가위를 이미 쓴 매물(잔여 < 최대)은
 되팔 때 불리해서 목록에 칩으로 표시하고, 상세에는 교환 조건과 함께 보여줌.
 
-필터로 거는 건 아직 안 넣었음. 쓸 수 있는 파라미터는 확인해둠 — `etcOption::cuttableCountMin/Max`,
-`etcOption::uncuttable`, `etcOption::isBindedWhenEquipped`, `etcOption::isExPassDown`,
-`etcOption::isPotentialPassDown`. **실제 결과로 검증한 적은 없으니** 넣을 땐 주문서 강화 코드 때처럼
-한 번씩 확인하고 넣을 것.
+**기타 조건 필터** (가위 잔여 횟수 / 가위 미부여 / 장착 시 교환 불가 / 추옵·잠재 추출 가능)도 검색
+조건에 들어있음. 여기엔 함정이 둘 있어서 실측으로 확인하고 넣었음:
+
+- 개별 불린 파라미터가 **아님.** 켜진 것들의 이름을 쉼표로 이어 붙인 목록 하나로 나감:
+  `etcOption::activeOptions=uncuttable,isBindedWhenEquipped,isExPassDown,isPotentialPassDown`
+  (요청 본문에서는 `isExOptExtractable` / `isPotentialExtractable` 로 이름이 또 바뀜)
+- 가위 범위는 `cuttableCountMin/Max` 만 보내면 **무시됨.** `activeOptions` 에 `cuttableCount` 가
+  같이 들어가야 적용됨.
+- 옥션 UI 라벨은 "가위 사용 횟수"지만 실제로는 **잔여 횟수** 기준임. 10~10 으로 걸면 잔여 10/10 매물만
+  499건 나옴(사용 횟수였다면 가위를 10번 쓴 매물이라 거의 없어야 함).
 
 ### 저장된 조건 일괄 조회
 
