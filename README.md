@@ -152,3 +152,15 @@
 1. 이 저장소를 GitHub에 올리고 Render → New → Web Service로 연결
 2. Build: `npm install` / Start: `npm start` / Instance: Free
 3. Settings → Build & Deploy → **Auto-Deploy: On** 권장 (꺼져 있으면 push 후 수동으로 Manual Deploy 필요)
+
+### 의존성 버전 고정
+
+`package-lock.json`을 커밋함. 예전엔 `.gitignore`에 있어서 Render가 배포할 때마다 의존성을 새로
+풀었는데, 그러면 코드를 안 건드려도 상위 패키지 패치에 따라 배포 결과가 달라짐(실제로 어느 배포에서는
+express 4.22.2가 잡혀서 `npm audit`이 취약점 4건을 띄웠고, 다음 배포에선 4.22.3이 잡혔음).
+
+대신 **보안 패치가 저절로 따라오지 않으니** 가끔 `npm audit` 보고 필요하면 이렇게 올려줘야 함:
+
+```
+npm audit fix && npm install
+```
