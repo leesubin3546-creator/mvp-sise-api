@@ -65,3 +65,28 @@ assert.doesNotMatch(html, /id="subStat"/);
 assert.match(html, /mvpListings\.exWeights\.v2/);
 
 console.log('listings tests passed');
+
+// ---- 추가 옵션 "급" ----
+// 급은 스탯 종류와 아이템 레벨에 따라 옥션이 직접 매긴 값이라 우리가 재계산하지 않고 그대로 쓴다.
+const gradeSrc = between('function exSum(r)', 'function exScoreParts');
+const exSum = new Function(`${gradeSrc}\nreturn exSum;`)();
+
+// 실측 표본: 네크로 에인션트 보우 Lv.120 — 5+6+3+5 = 19급
+const bow = { exSum: 19, exGrades: [
+  { g: 5, t: '보스 몬스터 데미지 +10%' }, { g: 6, t: 'STR, LUK +24' },
+  { g: 3, t: '데미지 +3%' }, { g: 5, t: 'STR +35' } ] };
+assert.equal(exSum(bow), 19, '옥션이 준 합계를 그대로 쓴다');
+assert.equal(exSum({ exGrades: bow.exGrades }), 19, '합계가 없으면 줄별 급을 더한다');
+assert.equal(exSum({ exOption: ['STR +35'] }), null, '급 정보가 없으면 빈 값');
+assert.equal(exSum({}), null, '옛 유저스크립트 매물도 안전');
+
+// 보스 데미지%·데미지% 는 환산 점수에 안 잡히지만 급에는 잡힌다 —
+// 급을 따로 두는 이유가 이것(환산만 보면 보스뎀 10% 무기가 0짜리와 같은 점수가 됨)
+assert.equal(calcExScore({ str: 35, luk: 24 }, { ...base, main: 'str', attack: 'pad' }).score,
+  35, '보스뎀/데미지%는 환산에 안 들어감');
+assert.ok(exSum(bow) > 0, '그래도 급으로는 평가된다');
+
+assert.match(html, /th\('exg','추옵 급'\)/, '급 칼럼이 정렬 가능');
+assert.match(html, /th\('ex','환산'\)/, '환산 칼럼도 따로 유지');
+
+console.log('flame grade tests passed');

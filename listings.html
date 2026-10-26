@@ -80,6 +80,9 @@
   .chip.ex{background:#e4eef3;color:#3f6376}
   .osum.ex{color:#3f6376} .osum.ex b{background:#dfeaf1;color:#3f6376}
   .exsc{font-size:10px;padding:1px 5px;border-radius:4px;background:#dfeaf1;color:#3f6376}
+  .exg{font-weight:700;color:#3f6376;cursor:help}
+  .gtag{display:inline-block;min-width:26px;font-size:10px;font-weight:700;padding:1px 4px;
+    border-radius:4px;background:#dfeaf1;color:#3f6376;margin-right:5px}
   /* 지금 걸린 조건 줄 */
   .applied{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px;
     padding:10px 12px;background:#faf6ee;border:1px solid var(--line);border-radius:9px}
@@ -1017,7 +1020,8 @@ let lastResult=null, sortState=null;
 const SORT_COLS={
   per:{label:'개당 가격', get:r=>r.pricePerUnit},
   sf:{label:'★', get:r=>r.starforce},
-  ex:{label:'추옵', get:r=>exScore(r)},
+  exg:{label:'추옵 급', get:r=>exSum(r)},
+  ex:{label:'환산', get:r=>exScore(r)},
   remain:{label:'남은 시간', get:r=>r.remainMin}
 };
 
@@ -1045,10 +1049,11 @@ function paint(){
       <td class="price">${meso(r.pricePerUnit??r.priceTotal)}${tot}</td>
       <td>${vsMedian(r,st)}</td>
       <td>${sfLabel(r)}</td>
+      <td>${exGradeCell(r)}</td>
       <td>${exScoreCell(r)}</td>
       <td>${t}</td>
     </tr>
-    <tr class="detail" data-d="${i}" hidden><td colspan="6">${detailHtml(r)}</td></tr>`;
+    <tr class="detail" data-d="${i}" hidden><td colspan="7">${detailHtml(r)}</td></tr>`;
   }).join('');
   const th=(key,text,extra)=>{
     if(!key)return `<th${extra||''}>${text}</th>`;
@@ -1058,7 +1063,7 @@ function paint(){
   };
   $('resultWrap').innerHTML=statsCard(st)+`<table>
     <thead><tr>${th(null,'아이템')}${th('per','개당 가격')}${th(null,'시세 대비')}
-      ${th('sf','★')}${th('ex','추옵')}${th('remain','남은 시간')}</tr></thead>
+      ${th('sf','★')}${th('exg','추옵 급')}${th('ex','환산')}${th('remain','남은 시간')}</tr></thead>
     <tbody>${body}</tbody></table>`;
   $('resultWrap').querySelectorAll('th.sortable').forEach(h=>{
     h.onclick=()=>{
@@ -1103,6 +1108,12 @@ function shortOpt(text){
   for(const [re,to] of OPT_SHORT){ if(re.test(s)){ s=s.replace(re,to); break; } }
   return s.replace(/\s*\+\s*/,' ').replace(/\s+/g,' ').trim();
 }
+// 접힌 줄 요약도 급이 있으면 같이 — "5급 보스뎀 10%" 처럼
+function exInlineList(r){
+  if(Array.isArray(r.exGrades)&&r.exGrades.length)return r.exGrades.map(x=>x.g+'급 '+x.t);
+  return r.exOption;
+}
+
 function optSummary(label,list,cls){
   if(!list||!list.length)return '';
   return `<span class="osum ${cls}"><b>${label}</b>${list.map(shortOpt).map(esc).join(' · ')}</span>`;
@@ -1114,7 +1125,7 @@ function nameCell(r){
   // 잠재·에디·추옵은 매물을 고르는 핵심이라 접힌 상태에서도 한 줄로 보여줌
   const opts=optSummary('잠',r.potential,'pot')
     +optSummary('에',r.additional,'add')
-    +optSummary('추',r.exOption,'ex');
+    +optSummary('추',exInlineList(r),'ex');
   return `<span class="caret">▶</span><span class="iname">${esc(r.name)}</span>${g}`
     +(opts?`<div class="osums">${opts}</div>`:'')
     +chips(r);
@@ -1153,6 +1164,23 @@ function calcExScore(st,cfg){
     attackLabel:cfg.attack==='mad'?'마력':'공격력',
     cfg
   };
+}
+
+// 추가 옵션 "급" — 옥션이 줄마다 직접 매겨준 값.
+// 급은 스탯 종류와 아이템 레벨에 따라 정해져서(같은 공격력 +20 도 레벨대마다 급이 다름)
+// 수치만 보고는 재현할 수 없음. 옥션이 준 값을 그대로 쓰는 게 유일하게 맞는 방법이라
+// 환산표를 따로 만들지 않음. 환산 점수는 "내 직업 기준 가치"라 급과 쓰임이 다름.
+function exSum(r){
+  if(Number.isFinite(r.exSum))return r.exSum;
+  if(Array.isArray(r.exGrades)&&r.exGrades.length)
+    return r.exGrades.reduce((a,x)=>a+(x.g||0),0);
+  return null;
+}
+function exGradeCell(r){
+  const v=exSum(r);
+  if(v==null)return '-';
+  const lines=(r.exGrades||[]).map(x=>`${x.g}급 ${x.t}`).join('\n');
+  return `<span class="exg"${lines?` title="${esc(lines)}"`:''}>${v}급</span>`;
 }
 
 function exScoreParts(r){return calcExScore(r.exStat,currentExConfig());}
@@ -1209,6 +1237,20 @@ function chips(r){
   return c.length?`<div class="chips">${c.join('')}</div>`:'';
 }
 
+// 추가 옵션은 줄마다 급이 붙어서 따로 그림
+function exBlock(r,ep){
+  const sum=exSum(r);
+  const head='<b>추가 옵션'
+    +(sum!=null?` <span class="exsc">${sum}급</span>`:'')
+    +(ep?` <span class="exsc" title="${esc(exFormula(ep))}">환산 ${formatScore(ep.score)}</span>`:'')
+    +'</b>';
+  const rows=(r.exGrades&&r.exGrades.length)
+    ? r.exGrades.map(x=>`<li><span class="gtag">${x.g}급</span> ${esc(x.t)}</li>`)
+    : (r.exOption||[]).map(t=>`<li>${esc(t)}</li>`);
+  if(!rows.length)return `<div class="ob">${head}<span class="none">없음</span></div>`;
+  return `<div class="ob">${head}<ul>${rows.join('')}</ul></div>`;
+}
+
 function optBlock(title,grade,list){
   const head=`<b>${title}${grade?` <span class="grade g-${esc(grade)}">${esc(grade)}</span>`:''}</b>`;
   if(!list||!list.length)return `<div class="ob">${head}<span class="none">없음</span></div>`;
@@ -1232,7 +1274,7 @@ function detailHtml(r){
   return `<div class="detail-in">
     ${optBlock('잠재능력',r.potentialGrade,r.potential)}
     ${optBlock('에디셔널 잠재능력',r.additionalGrade,r.additional)}
-    ${optBlock('추가 옵션'+(ep?` <span class="exsc" title="${esc(exFormula(ep))}">환산 ${formatScore(ep.score)}</span>`:''),null,r.exOption)}
+    ${exBlock(r,ep)}
     <div class="ob"><b>스타포스 / 주문서 강화</b>
       <ul><li>${sf}</li><li>주문서 ${scroll}</li></ul></div>
     <div class="ob"><b>교환 / 가위</b>

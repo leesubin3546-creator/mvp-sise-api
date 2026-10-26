@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MVP 계산기 - 메이플 옥션 시세 리포터
 // @namespace    mvp-mesocalc
-// @version      1.6.0
+// @version      1.7.0
 // @description  옥션(auction.maplestory.nexon.com) 구매/시세 검색 결과의 개당 최저가·최근 체결가와 매물 목록을 읽어서 MVP 계산기/매물 찾기 백엔드로 보고합니다. 로그인은 항상 사용자 본인 브라우저 세션을 그대로 사용하며, 이 스크립트가 로그인을 대신하거나 자격 증명을 저장/전송하지 않습니다.
 // @author       -
 // @match        https://auction.maplestory.nexon.com/buy*
@@ -103,6 +103,15 @@
     return null;
   }
 
+  // 추가 옵션 각 줄의 급과 문구
+  function gradesOf(o) {
+    const list = (o && o.entries) || [];
+    const out = list
+      .filter(e => Number.isFinite(e.grade))
+      .map(e => ({ g: e.grade, t: String(e.text || '').replace(/\s+/g, ' ').trim() }));
+    return out.length ? out : null;
+  }
+
   // 0 이 아닌 스탯만 남김. 추가 옵션 환산에 쓰임.
   function pickStat(o) {
     if (!o || typeof o !== 'object') return null;
@@ -171,6 +180,10 @@
         exOption: texts(up.exOption),
         // 추가 옵션을 수치로도 보냄 — 글로 된 줄만으로는 계산기 쪽에서 환산을 못 함
         exStat: pickStat(tt.exOptionStat),
+        // 옥션이 줄마다 매겨놓은 "급"과 그 합계. 급은 스탯 종류와 아이템 레벨에 따라
+        // 옥션이 직접 계산해주는 값이라, 우리가 환산표를 만들 필요가 없음.
+        exGrades: gradesOf(up.exOption),
+        exSum: up.exOption && Number.isFinite(up.exOption.sum) ? up.exOption.sum : null,
         // 가위 사용 잔여 횟수와 교환 조건은 toolTip.tradeDesc 에 글로 들어있음
         // (별도 숫자 필드가 없어서 거기서 뽑음)
         cut: parseCut(tt.tradeDesc),
