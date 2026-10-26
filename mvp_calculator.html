@@ -300,7 +300,7 @@ function addRow(it){
 (loadItemList()||PRESET).forEach(addRow);
 document.getElementById('addRow').onclick=()=>{addRow(null);saveItemList();};
 document.getElementById('resetItemsBtn').onclick=()=>{
-  if(!confirm('저장된 아이템 목록을 지우고 기본값(2026-07-23 업데이트 기준)으로 되돌릴까?'))return;
+  if(!confirm('저장된 아이템 목록을 지우고 기본값(2026-10-22 캐시샵 공지 기준)으로 되돌릴까?'))return;
   try{localStorage.removeItem(LS_ITEMS_KEY);}catch(e){}
   tbody.innerHTML='';
   PRESET.forEach(addRow);
