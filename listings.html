@@ -80,6 +80,9 @@
   .chip.ex{background:#e4eef3;color:#3f6376}
   .osum.ex{color:#3f6376} .osum.ex b{background:#dfeaf1;color:#3f6376}
   .exsc{font-size:10px;padding:1px 5px;border-radius:4px;background:#dfeaf1;color:#3f6376}
+  .ex-formula{grid-column:1/-1;background:#eef4f6;border:1px solid #d8e6eb;border-radius:8px;
+    padding:8px 10px;font-size:11.5px;color:#496573;line-height:1.55}
+  .ex-formula b{margin-right:5px}
   /* 지금 걸린 조건 줄 */
   .applied{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px;
     padding:10px 12px;background:#faf6ee;border:1px solid var(--line);border-radius:9px}
@@ -93,10 +96,19 @@
   .bitem{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
     padding:5px 10px;border-radius:7px;background:#eee7d9;color:#6b5c47;cursor:pointer}
   .bitem input{width:auto;margin:0;cursor:pointer}
-  tr.brow{cursor:pointer}
-  tr.brow:hover{background:#faf7f0}
   td.peek{cursor:pointer}
   td.peek:hover{color:var(--accent-d);text-decoration:underline}
+  .peek-btn{border:0;background:transparent;color:var(--accent-d);font:inherit;font-weight:700;
+    cursor:pointer;padding:3px 5px}
+  .peek-btn:hover{text-decoration:underline}
+  .top5{display:grid;gap:7px;padding:5px 0;text-align:left}
+  .top5 details{background:#faf6ee;border:1px solid var(--line);border-radius:9px;padding:7px 10px}
+  .top5 summary{cursor:pointer;font-size:12.5px;color:var(--txt);list-style-position:outside}
+  .top5 summary .rank{display:inline-block;min-width:28px;color:var(--accent-d);font-weight:800}
+  .top5 summary .top-price{font-weight:800;color:var(--accent-d);margin-right:7px}
+  .top5 summary .top-meta{color:var(--sub);font-size:11.5px}
+  .top5-actions{display:flex;justify-content:flex-end;margin-top:3px}
+  .top5-actions .btn{padding:7px 11px;font-size:12px}
   td.none{color:var(--sub);text-align:center}
   /* 시세 요약 */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;
@@ -344,8 +356,9 @@
       <summary style="cursor:pointer;font-size:12.5px;color:var(--sub);font-weight:700">
         ⚙ 추가 옵션 환산 기준</summary>
       <div class="hint" style="margin:9px 0 11px">
-        추옵은 수치가 제각각이라 그대로는 비교가 안 돼서 하나로 모아 점수를 냄. 가중치는 직업·세팅마다
-        달라서 못 박지 않고 열어뒀어 — 기본값은 흔히 쓰는 <b>공격력 1 = 주스탯 4</b> 기준이야.
+        옥션 원본의 주스탯·부스탯·올스탯%·공격력/마력을 각각 환산해 하나의 점수로 비교해.
+        기본값은 <b>부스탯 10 = 주스탯 1, 올스탯 1% = 주스탯 10, 공격력/마력 1 = 주스탯 4</b>이며
+        캐릭터 스펙에 맞게 바꿀 수 있어.
       </div>
       <div class="row">
         <div class="col" style="max-width:150px">
@@ -356,16 +369,31 @@
           </select>
         </div>
         <div class="col" style="max-width:150px">
+          <label>부스탯</label>
+          <select id="subStat">
+            <option value="auto">자동</option><option value="str">STR</option>
+            <option value="dex">DEX</option><option value="int">INT</option>
+            <option value="luk">LUK</option><option value="none">사용 안 함</option>
+          </select>
+        </div>
+        <div class="col" style="max-width:150px">
+          <label>공격 능력치</label>
+          <select id="attackType">
+            <option value="auto">자동</option><option value="pad">공격력</option>
+            <option value="mad">마력</option>
+          </select>
+        </div>
+        <div class="col" style="max-width:150px">
           <label>공격력/마력 1당</label>
           <input id="wAtk" type="text" inputmode="decimal" value="4">
         </div>
         <div class="col" style="max-width:150px">
           <label>부스탯 1당</label>
-          <input id="wSub" type="text" inputmode="decimal" value="0">
+          <input id="wSub" type="text" inputmode="decimal" value="0.1">
         </div>
         <div class="col" style="max-width:150px">
-          <label>올스탯 1당</label>
-          <input id="wAll" type="text" inputmode="decimal" value="1">
+          <label>올스탯 1%당</label>
+          <input id="wAll" type="text" inputmode="decimal" value="10">
         </div>
         <div class="col" style="max-width:150px">
           <label>최대 HP 1당</label>
@@ -839,8 +867,11 @@ $('batchRun').onclick=async()=>{
     refreshUserscriptStatus();
     for(let n=0;n<idx.length;n++){
       const p=ps[idx[n]];
-      const got=await runSearch(p.filters,`${n+1}/${idx.length} ${p.name}`);
-      batchResults.push({name:p.name,filters:p.filters,data:got});
+      // 일괄 조회의 목적은 시세/최저가 비교이므로 저장 당시 정렬과 무관하게 가격 오름차순으로 검색.
+      // 그래야 첫 페이지의 앞 5건이 실제 전체 매물 중 최저가 1~5위가 됨.
+      const searchFilters={...p.filters,sortType:'PRICE_PER_ITEM_ASC'};
+      const got=await runSearch(searchFilters,`${n+1}/${idx.length} ${p.name}`);
+      batchResults.push({name:p.name,filters:searchFilters,data:got});
       renderBatch();
       // 옥션 5초 연속검색 제한 — 마지막 건 뒤에는 기다릴 필요 없음
       if(n<idx.length-1){
@@ -863,23 +894,26 @@ function renderBatch(){
     const st=priceStats(b.data);
     const cheapest=(b.data.rows||[])
       .filter(r=>Number.isFinite(r.pricePerUnit))
-      .reduce((a,r)=>!a||r.pricePerUnit<a.pricePerUnit?r:a,null);
+      .sort((a,c)=>a.pricePerUnit-c.pricePerUnit)
+      .slice(0,5);
     b._cheapest=cheapest;
     return `<tr class="brow" data-b="${i}">
       <td>${esc(b.name)}</td>
       <td>${b.data.total.toLocaleString()}건</td>
       <td class="price">${st?meso(st.min):'-'}</td>
       <td>${st?meso(st.med):'-'}</td>
-      <td class="peek"${cheapest?' data-peek="'+i+'"':''}>${cheapest?esc(cheapest.name)+' <span class="caret">▶</span>':'-'}</td>
+      <td class="peek"${cheapest.length?' data-peek="'+i+'"':''}>${cheapest.length
+        ?`<button type="button" class="peek-btn">최저가 ${cheapest.length}개 <span class="caret">▶</span></button>`:'-'}</td>
     </tr>
-    ${cheapest?`<tr class="detail" data-peek-d="${i}" hidden><td colspan="5">${detailHtml(cheapest)}</td></tr>`:''}`;
+    ${cheapest.length?`<tr class="detail" data-peek-d="${i}" hidden><td colspan="5">${topFiveHtml(cheapest,i)}</td></tr>`:''}`;
   }).join('');
   $('batchResult').innerHTML=`<table>
     <thead><tr><th>저장된 조건</th><th>전체 매물</th><th>최저가</th><th>중앙값</th><th>최저가 매물</th></tr></thead>
     <tbody>${body}</tbody></table>
-    <div class="hint" style="margin-top:8px">행을 누르면 그 조건의 매물 전체가 아래 <b>매물 목록</b>에 뜨고,
-      <b>최저가 매물</b> 칸을 누르면 그 매물 정보만 바로 펼쳐져.</div>`;
-  // 최저가 매물 칸: 행 전체 동작(목록 펼치기) 대신 그 매물 상세만 보여줌
+    <div class="hint" style="margin-top:8px">일괄 조회는 항상 <b>개당 낮은 가격순</b>으로 검색해.
+      <b>최저가 매물</b> 버튼을 누르면 가격이 낮은 5개와 상세 옵션이
+      이 표 안에서 펼쳐져. 전체 목록은 펼친 영역의 <b>전체 매물 보기</b>를 눌렀을 때만 3번에 표시돼.</div>`;
+  // 행 전체에는 동작을 달지 않음. 사용자가 고른 명시적 버튼만 화면 상태를 바꿈.
   $('batchResult').querySelectorAll('td.peek[data-peek]').forEach(td=>{
     td.onclick=e=>{
       e.stopPropagation();
@@ -889,16 +923,31 @@ function renderBatch(){
       td.querySelector('.caret').textContent=open?'▼':'▶';
     };
   });
-  $('batchResult').querySelectorAll('tr.brow').forEach(tr=>{
-    tr.onclick=()=>{
-      const b=batchResults[+tr.dataset.b];
+  $('batchResult').querySelectorAll('[data-full]').forEach(btn=>{
+    btn.onclick=e=>{
+      e.stopPropagation();
+      const b=batchResults[+btn.dataset.full];
       if(!b.data)return;
       applyFilters(b.filters); saveLast();
       sortState=null; render(b.data);
-      setStatus(`"${b.name}" 결과를 펼쳤어.`);
-      $('resultWrap').scrollIntoView?.({behavior:'smooth',block:'start'});
+      setStatus(`"${b.name}" 전체 매물을 3번 목록에 표시했어.`);
     };
   });
+}
+
+function topFiveHtml(rows,batchIndex){
+  const items=rows.map((r,i)=>{
+    const p=exScoreParts(r);
+    const meta=[sfLabel(r),p?`추옵 ${formatScore(p.score)}`:null,r.isMyWorld===false?'타 월드':null]
+      .filter(Boolean).join(' · ');
+    return `<details><summary><span class="rank">#${i+1}</span>
+      <span class="top-price">${meso(r.pricePerUnit??r.priceTotal)}</span>
+      <span>${esc(r.name)}</span>${meta?` <span class="top-meta">· ${meta}</span>`:''}</summary>
+      ${detailHtml(r)}</details>`;
+  }).join('');
+  return `<div class="top5">${items}
+    <div class="top5-actions"><button type="button" class="btn ghost" data-full="${batchIndex}">전체 매물 보기</button></div>
+  </div>`;
 }
 
 // ---- 시세 통계 ----
@@ -1014,7 +1063,7 @@ function paint(){
       <td class="price">${meso(r.pricePerUnit??r.priceTotal)}${tot}</td>
       <td>${vsMedian(r,st)}</td>
       <td>${sfLabel(r)}</td>
-      <td>${exScore(r)??'-'}</td>
+      <td>${exScoreCell(r)}</td>
       <td>${t}</td>
     </tr>
     <tr class="detail" data-d="${i}" hidden><td colspan="6">${detailHtml(r)}</td></tr>`;
@@ -1093,18 +1142,57 @@ function nameCell(r){
 // 추옵끼리 비교하려면 서로 다른 수치를 한 단위로 모아야 함. 가중치는 직업·세팅마다 달라서
 // 하나로 못 박지 않고 입력으로 뺐음(기본값은 흔히 쓰는 "공격력 1 = 주스탯 4" 기준).
 // exStat 은 유저스크립트가 보내주는 옥션 원본 수치라 글자 파싱이 아님.
-const MAIN_STAT_KEY={str:'str',dex:'dex',int:'int',luk:'luk'};
-function exScore(r){
-  const st=r.exStat;
+const STAT_LABEL={str:'STR',dex:'DEX',int:'INT',luk:'LUK'};
+// 일반적인 직업 기준 자동 부스탯. 해적처럼 주스탯이 STR/DEX인 경우도 서로 반대쪽이 부스탯임.
+const AUTO_SUB_STAT={str:'dex',dex:'str',int:'luk',luk:'dex'};
+
+function currentExConfig(){
+  const main=$('mainStat').value;
+  const subChoice=$('subStat').value;
+  const attackChoice=$('attackType').value;
+  return {
+    main,
+    sub:subChoice==='auto'?AUTO_SUB_STAT[main]:subChoice,
+    attack:attackChoice==='auto'?(main==='int'?'mad':'pad'):attackChoice,
+    wAtk:num('wAtk'),wSub:num('wSub'),wAll:num('wAll'),wHp:num('wHp')
+  };
+}
+
+// 순수 계산 함수로 분리해 실제 옥션 표본과 단위 테스트에서 같은 식을 사용함.
+// st.all은 '올스탯 수치'가 아니라 퍼센트(예: 6 = 6%)이고 pad/mad는 공격력/마력임.
+function calcExScore(st,cfg){
   if(!st)return null;
-  const main=$('mainStat').value;             // str/dex/int/luk
-  const wAtk=num('wAtk'), wSub=num('wSub'), wAll=num('wAll'), wHp=num('wHp');
-  const atk=(main==='int'? (st.mad||0) : (st.pad||0));   // 마법사는 마력, 나머지는 공격력
-  const mainV=st[MAIN_STAT_KEY[main]]||0;
-  const subV=['str','dex','int','luk'].filter(k=>k!==main).reduce((a,k)=>a+(st[k]||0),0);
-  const allV=st.all||0;
+  const mainV=st[cfg.main]||0;
+  const subV=cfg.sub==='none'?0:(st[cfg.sub]||0);
+  const allPct=st.all||0;
+  const attackV=st[cfg.attack]||0;
   const hpV=st.mhp||0;
-  return Math.round(mainV + atk*wAtk + subV*wSub + allV*wAll + hpV*wHp);
+  const raw=mainV+subV*cfg.wSub+allPct*cfg.wAll+attackV*cfg.wAtk+hpV*cfg.wHp;
+  return {
+    score:Math.round(raw*10)/10,
+    mainV,subV,allPct,attackV,hpV,
+    mainLabel:STAT_LABEL[cfg.main],
+    subLabel:cfg.sub==='none'?null:STAT_LABEL[cfg.sub],
+    attackLabel:cfg.attack==='mad'?'마력':'공격력',
+    cfg
+  };
+}
+
+function exScoreParts(r){return calcExScore(r.exStat,currentExConfig());}
+function exScore(r){const p=exScoreParts(r);return p?p.score:null;}
+function formatScore(v){return Number.isInteger(v)?String(v):Number(v).toFixed(1);}
+function exFormula(p){
+  if(!p)return '';
+  const a=[`${p.mainLabel} ${p.mainV}`];
+  if(p.subLabel&&p.subV)a.push(`${p.subLabel} ${p.subV}×${p.cfg.wSub}`);
+  if(p.allPct)a.push(`올스탯 ${p.allPct}%×${p.cfg.wAll}`);
+  if(p.attackV)a.push(`${p.attackLabel} ${p.attackV}×${p.cfg.wAtk}`);
+  if(p.hpV&&p.cfg.wHp)a.push(`HP ${p.hpV}×${p.cfg.wHp}`);
+  return `${a.join(' + ')} = ${formatScore(p.score)}`;
+}
+function exScoreCell(r){
+  const p=exScoreParts(r);
+  return p?`<span title="${esc(exFormula(p))}">${formatScore(p.score)}</span>`:'-';
 }
 function num(id){const v=parseFloat(($(id).value||'').replace(/,/g,''));return Number.isFinite(v)?v:0;}
 
@@ -1163,11 +1251,12 @@ function detailHtml(r){
       +`${r.upgradeFailure?` · 복구 가능 ${r.upgradeFailure}회`:''}`
     : '정보 없음';
   const cut=r.cut?`가위 사용 잔여 ${r.cut.left}/${r.cut.max}회`:'가위 정보 없음';
-  const sc=exScore(r);
+  const ep=exScoreParts(r);
   return `<div class="detail-in">
     ${optBlock('잠재능력',r.potentialGrade,r.potential)}
     ${optBlock('에디셔널 잠재능력',r.additionalGrade,r.additional)}
-    ${optBlock('추가 옵션'+(sc!=null?` <span class="exsc">환산 ${sc}</span>`:''),null,r.exOption)}
+    ${optBlock('추가 옵션'+(ep?` <span class="exsc">환산 ${formatScore(ep.score)}</span>`:''),null,r.exOption)}
+    ${ep?`<div class="ex-formula"><b>환산식</b> ${esc(exFormula(ep))}</div>`:''}
     <div class="ob"><b>스타포스 / 주문서 강화</b>
       <ul><li>${sf}</li><li>주문서 ${scroll}</li></ul></div>
     <div class="ob"><b>교환 / 가위</b>
@@ -1180,20 +1269,22 @@ $('addPot').onclick=()=>{addOptRow('potRows');};
 $('addAdd').onclick=()=>{addOptRow('addRows');};
 $('addEx').onclick=()=>{addOptRow('exRows');};
 $('addScroll').onclick=()=>{addOptRow('scrollRows');};
-['mainStat','wAtk','wSub','wAll','wHp'].forEach(id=>{
+['mainStat','subStat','attackType','wAtk','wSub','wAll','wHp'].forEach(id=>{
   const e=$(id);
   e.addEventListener('input',()=>{ saveExWeights(); paint(); renderBatch(); });
   e.addEventListener('change',()=>{ saveExWeights(); paint(); renderBatch(); });
 });
-const LS_EXW='mvpListings.exWeights.v1';
+// v1은 올스탯을 일반 스탯처럼 계산하던 설정이라 의미가 달라졌음. v2에서 정확한 기본값으로 새로 시작.
+const LS_EXW='mvpListings.exWeights.v2';
 function saveExWeights(){
   try{localStorage.setItem(LS_EXW,JSON.stringify({mainStat:$('mainStat').value,
+    subStat:$('subStat').value,attackType:$('attackType').value,
     wAtk:$('wAtk').value,wSub:$('wSub').value,wAll:$('wAll').value,wHp:$('wHp').value}));}catch(e){}
 }
 function loadExWeights(){
   let w=null; try{ w=JSON.parse(localStorage.getItem(LS_EXW)); }catch(e){}
   if(!w)return;
-  ['mainStat','wAtk','wSub','wAll','wHp'].forEach(k=>{ if(w[k]!=null)$(k).value=w[k]; });
+  ['mainStat','subStat','attackType','wAtk','wSub','wAll','wHp'].forEach(k=>{ if(w[k]!=null)$(k).value=w[k]; });
 }
 
 ['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',

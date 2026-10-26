@@ -4,7 +4,8 @@
   "description": "메이플 MVP작 비용 계산기 + 옥션 매물 찾기 백엔드 (Render 배포용)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/listings.test.js"
   },
   "engines": {
     "node": ">=18"
