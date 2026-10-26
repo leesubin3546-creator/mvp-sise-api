@@ -1,12 +1,15 @@
 {
   "name": "mvp-sise-api",
   "version": "1.0.0",
-  "description": "메이플 MVP작 시세 자동수집 API (로아땡 스크래퍼)",
+  "description": "메이플 MVP작 비용 계산기 + 옥션 매물 찾기 백엔드 (Render 배포용)",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "express": "^4.19.2",
-    "iconv-lite": "^0.6.3"
+    "express": "^4.19.2"
   }
 }
