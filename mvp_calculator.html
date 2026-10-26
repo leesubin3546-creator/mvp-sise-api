@@ -117,7 +117,7 @@
         <input id="remain" type="text" value="0" readonly style="font-weight:800;color:var(--accent-d)">
       </div>
     </div>
-    <div class="hint">※ 마일리지·할인으로 깎인 금액은 실적에 안 잡혀. 실제로 소모한 넥슨캐시만 등급에 반영돼.</div>
+    <div class="hint">※ 충전 할인으로 덜 낸 금액은 실적에 그대로 잡혀. 등급에 반영되는 건 <b>소모한 넥슨캐시 액수</b>야.</div>
   </div>
 
   <!-- 2. 공통 시세 -->
@@ -169,21 +169,18 @@
           </select>
         </div>
         <div class="col">
-          <label>보유(기존) 마일리지 (원)</label>
-          <input id="mileage" type="text" inputmode="numeric" value="0">
-          <div class="hint">이미 가진 마일리지</div>
-        </div>
-        <div class="col">
-          <label>마일리지 적립률 (%)</label>
-          <input id="mileageRate" type="text" inputmode="decimal" value="5">
-          <div class="hint">넥슨캐시 결제액의 5% 적립(기본). 엠작 중 자동 적립분 반영</div>
+          <div class="hint" style="margin-top:22px">
+            2026-09-17 개편으로 <b>마일리지 할인 결제가 없어졌어.</b> 남은 마일리지는 11/19 점검 전까지만
+            쓸 수 있고 그 뒤 소멸해. 지금 쌓이는 건 넥슨캐시 결제액의 5%인 <b>메이플크레딧</b>인데,
+            캐시샵 할인엔 못 쓰고 크레딧샵 전용이라 비용 계산에서는 뺐어.
+          </div>
         </div>
       </div>
       <div class="banner-warn" id="userscriptBanner" style="display:none"></div>
       <table id="itemTable">
         <thead>
           <tr>
-            <th>아이템</th><th>캐시가격</th><th>마일리지%<br>(실적↓)</th><th>판매가<br>(억메소)</th><th>시세</th>
+            <th>아이템</th><th>캐시가격</th><th>판매가<br>(억메소)</th><th>시세</th>
             <th>본전가<br>(억메소)</th><th>1만원당<br>손해</th><th></th>
           </tr>
         </thead>
@@ -196,8 +193,10 @@
         <button class="btn ghost" id="resetItemsBtn">↺ 기본값으로 초기화</button>
       </div>
       <div class="hint">
-        여러 아이템을 넣으면 <b>자동으로 최적 조합</b>을 짜줘: 마일리지(보유+엠작적립)는 <b>“마일 할인 시 손해율 최저” 아이템</b>에 몰고, 나머지 실적은 <b>“정가 손해율 최저” 아이템</b>으로 채워.<br>
-        <b>마일리지%</b>: 마일로 깎이는 비율(플래티넘 카르마의 가위 등 30). ⚠ 할인분은 넥슨캐시로 안 나가 <b>실적도 안 쌓임</b>. <b>본전가</b> = 손해 0 되는 최소 판매가(마일 적용 기준).<br>
+        여러 아이템을 넣으면 <b>자동으로 최적 조합</b>을 짜줘. 마일리지 할인이 없어진 뒤로는 실적 1만원당
+        손해가 가장 적은 아이템으로 채우되, 정수 개수만 살 수 있어서 생기는 <b>초과분이 최소가 되도록</b>
+        아이템을 섞는 게 전부야(메소마켓식도 같은 후보로 같이 비교함).<br>
+        <b>본전가</b> = 손해 0 이 되는 최소 판매가.<br>
         <b>🔍 시세</b> 버튼: 옥션 구매 탭 1개를 계속 재사용하면서 개당 실시간 최저가(구매 최저가)를 판매가 칸에 자동으로 채워줘.
         (최근 거래 시세는 안 봄 — 최저가만으로 충분해서 뺐고, 탭도 하나만 써서 넥슨이 "다른 환경에서 접속 감지"로 세션을 끊어버리는 문제도 같이 해결됨). 자동 반영에는
         <a href="userscript/auction-price-reporter.user.js" target="_blank">유저스크립트</a> 설치가 필요해(Tampermonkey 등). 옥션은 넥슨 OTP 로그인 필요 — 이 스크립트는 로그인을 대신하지 않고, 사용자가 이미 로그인한 화면의 가격만 읽어서 보내. <b>열린 옥션 탭에서 로그인이 안 돼 있으면</b> 검색 결과 자체가 안 떠서 판매가가 안 채워지니, 먼저 그 탭에서 로그인해줘. <b>🗙 옥션 탭 닫기</b>는 전체 시세 확인 도중에도 언제든 눌러서 정리할 수 있어.
@@ -214,14 +213,14 @@
   </div>
 
   <div class="mini">
-    등급 기준(13주 누적): 브론즈 15만 · 실버 30만 · 골드 60만 · 다이아 90만 · 레드 150만 · 블랙 300만<br>
+    등급 기준(13주 누적): 브론즈 15만 · 실버 30만 · 골드 60만 · 다이아 90만 · 레드 150만 · 블랙 250만<br>
     자료: 나무위키 메이플/MVP · 넥슨 공식 가이드 · 시세 출처 로아땡(itemthankyou.com)
   </div>
 
 <script>
 const GRADES=[
   {k:'br',n:'브론즈',v:150000},{k:'si',n:'실버',v:300000},{k:'go',n:'골드',v:600000},
-  {k:'di',n:'다이아',v:900000},{k:'re',n:'레드',v:1500000},{k:'bl',n:'블랙',v:3000000}
+  {k:'di',n:'다이아',v:900000},{k:'re',n:'레드',v:1500000},{k:'bl',n:'블랙',v:2500000}
 ];
 let target=1500000;
 const won=n=>Math.round(n).toLocaleString('ko-KR');
@@ -248,28 +247,28 @@ document.querySelectorAll('.tab').forEach(t=>{
   };
 });
 
-// 2026-07-23 캐시아이템 업데이트 기준 · 옥션 개당 최저가(스카니아) 반영
+// 2026-10-22 캐시샵 공지 기준 — "현재 판매 중이면서 경매장에 팔 수 있는" 것만 남김.
+// 캐시샵 공지 목록에서 빠진 "상반기 BEST 프리미엄 헤어/성형 쿠폰"은 제외했고,
+// 몬스터파크 핸즈 이용권은 판매 불가라 애초에 넣지 않음.
+// 판매가(억메소)는 🔍 버튼으로 옥션 실시간 최저가를 받아 덮어쓰는 값이라 어디까지나 초기값임.
 const PRESET=[
-  {name:'부티크 기프트',cash:3300,disc:0,sell:1.7444},
-  {name:'컬러링 프리즘 프로',cash:25000,disc:30,sell:12.2222},
-  {name:'무기 이펙트 프리즘',cash:15000,disc:30,sell:8.7777},
-  {name:'마스터피스',cash:900,disc:0,sell:0.07},
-  {name:'프리미엄 마스터피스',cash:1900,disc:0,sell:0.70},
-  {name:'메이플 로얄 스타일',cash:2200,disc:0,sell:1.15},
-  {name:'상반기 BEST 프리미엄 헤어 쿠폰',cash:5500,disc:30,sell:2.89},
-  {name:'상반기 BEST 프리미엄 성형 쿠폰',cash:3500,disc:30,sell:1.8399},
-  {name:'프리미엄 헤어 쿠폰',cash:5500,disc:30,sell:3.0999},
-  {name:'프리미엄 성형 쿠폰',cash:3500,disc:30,sell:1.7669},
+  {name:'부티크 기프트',cash:3300,sell:1.7444},
+  {name:'컬러링 프리즘 프로',cash:25000,sell:12.2222},
+  {name:'무기 이펙트 프리즘',cash:15000,sell:8.7777},
+  {name:'마스터피스',cash:900,sell:0.07},
+  {name:'프리미엄 마스터피스',cash:1900,sell:0.70},
+  {name:'메이플 로얄 스타일',cash:2200,sell:1.15},
+  {name:'프리미엄 헤어 쿠폰',cash:5500,sell:3.0999},
+  {name:'프리미엄 성형 쿠폰',cash:3500,sell:1.7669},
 ];
 // ---- 아이템 표 저장(localStorage) ----
-// 새로고침·서버 리붓과 무관하게 마지막 상태(추가한 아이템, 수정한 캐시가/마일리지%, 🔍로 받은 판매가)를
+// 새로고침·서버 리붓과 무관하게 마지막 상태(추가한 아이템, 수정한 캐시가, 🔍로 받은 판매가)를
 // 브라우저에 남겨둠. 서버는 관여하지 않으므로 Render 무료티어 슬립/재시작에도 영향 없음(브라우저별로 저장됨).
-const LS_ITEMS_KEY='mvpCalc.items.v1';
+const LS_ITEMS_KEY='mvpCalc.items.v2';
 function saveItemList(){
   const items=[...tbody.querySelectorAll('tr')].map(tr=>({
     name:tr.querySelector('.i-name').value,
     cash:tr.querySelector('.i-cash').value,
-    disc:tr.querySelector('.i-disc').value,
     sell:tr.querySelector('.i-sell').value
   }));
   try{localStorage.setItem(LS_ITEMS_KEY,JSON.stringify(items));}catch(e){}
@@ -289,7 +288,6 @@ function addRow(it){
   tr.innerHTML=`
     <td><input class="i-name" value="${it?it.name:''}" style="min-width:100px"></td>
     <td><input class="i-cash" inputmode="numeric" value="${it?it.cash:0}" style="width:70px"></td>
-    <td><input class="i-disc" inputmode="numeric" value="${it?it.disc:0}" style="width:48px"></td>
     <td><input class="i-sell" inputmode="decimal" value="${it?it.sell:0}" style="width:64px"></td>
     <td><button type="button" class="mini-btn i-fetch" title="옥션 구매 최저가 가져오기">🔍</button></td>
     <td class="i-be">-</td><td class="i-per">-</td>
@@ -515,48 +513,30 @@ function calc(){
   } else mesoHtml='<div class="hint">메소마켓 억당 메포 시세를 입력해줘.</div>';
   document.getElementById('mesoResult').innerHTML=mesoHtml;
 
-  // ---- 경매장식 (마일리지 최적 블렌드) ----
-  // 원칙: 마일리지 할인분은 실적 미반영(실적=넥슨캐시분). 실적=넥슨캐시라 엠작 총 적립 마일 = remain×적립률(고정).
-  // 최적 = 마일리지는 "할인 시 최저 손해율" 아이템(가위)에 몰고, 나머지 실적은 "정가 최저 손해율" 아이템(헤쿠)으로.
+  // ---- 경매장식 ----
+  // 2026-09-17 개편으로 마일리지 할인 결제가 없어져서, 예전처럼 "마일리지를 어디에 몰까"를
+  // 고민할 게 없어짐. 이제 남은 건 하나뿐 — 실적 1만원당 손해가 제일 적은 아이템으로 채우되,
+  // 정수 개수만 살 수 있어서 생기는 초과분을 최소로 만드는 조합 찾기.
   const fee=num('fee')/100;
-  const mRate=num('mileageRate')/100;
-  const earnedMil=Math.round(remain*mRate);
-  const milBudget=num('mileage')+earnedMil;          // 사용 가능 마일리지
   const items=[];
   tbody.querySelectorAll('tr').forEach(tr=>{
     const cash=parseFloat((tr.querySelector('.i-cash').value||'0').replace(/,/g,''))||0;
-    const m=(parseFloat(tr.querySelector('.i-disc').value)||0)/100;
     const sell=parseFloat(tr.querySelector('.i-sell').value)||0;
     const name=tr.querySelector('.i-name').value||'아이템';
     const beCell=tr.querySelector('.i-be'), perCell=tr.querySelector('.i-per');
     if(cash>0){
-      const recover=sell*(1-fee)*cpe;
-      const jeokD=cash*(1-m), cashD=jeokD*(1-disc), netD=cashD-recover, milPer=cash*m;
-      const cashF=cash*(1-disc), netF=cashF-recover;
-      const perD=jeokD>0?netD/jeokD*per:0, perF=netF/cash*per;
-      beCell.textContent=(cashD/cpe/(1-fee)).toFixed(2);
-      const show=m>0?perD:perF;
-      perCell.innerHTML=won(show);
-      perCell.className='i-per '+(show<0?'pos':'neg');
-      items.push({tr,name,cash,m,jeokD,cashD,netD,milPer,cashF,netF,perD,perF});
+      const recover=sell*(1-fee)*cpe;         // 경매장에 팔아 회수하는 돈(수수료 뗀 뒤)
+      const cashF=cash*(1-disc);              // 충전 할인 반영한 실제 결제액
+      const netF=cashF-recover, perF=netF/cash*per;
+      beCell.textContent=(cashF/cpe/(1-fee)).toFixed(2);
+      perCell.innerHTML=won(perF);
+      perCell.className='i-per '+(perF<0?'pos':'neg');
+      items.push({tr,name,cash,cashF,netF,perF});
     }else{beCell.textContent='-';perCell.textContent='-';}
   });
   let aucCostPer=null,aucTotal=null,aucPaid=null,aucHtml='';
   if(items.length){
-    const bestFull=items.reduce((a,b)=>b.perF<a.perF?b:a);           // 정가 담당
-    const milList=items.filter(x=>x.m>0);
-    const bestMil=milList.length?milList.reduce((a,b)=>b.perD<a.perD?b:a):null; // 마일 담당
-    const useMil=bestMil && bestMil.perD<bestFull.perF && milBudget>0 && bestMil.milPer>0;
-    // 실물 아이템은 정수 개수만 구매 가능 → 마일리지템은 내림, 잔여 마일은 표시만
-    let jeokMil=0,itemsMil=0,milUsed=0,milPaid=0;
-    if(useMil){
-      itemsMil=Math.floor(Math.min(milBudget/bestMil.milPer, remain/bestMil.jeokD));
-      jeokMil=itemsMil*bestMil.jeokD;
-      milUsed=itemsMil*bestMil.milPer;
-      milPaid=itemsMil*bestMil.cashD; // 마일리지로 깎인 부분 제외, 실제로 캐시로 낸 금액
-    }
-    const milOn=useMil&&itemsMil>0;
-    const jeokFull=Math.max(0,remain-jeokMil);
+    const jeokFull=remain;
 
     // 메소마켓식도 "1억 메소(=mm원 실적)" 단위 lot으로만 살 수 있음 — 임의의 잔돈만큼은 못 사니,
     // 다른 아이템들과 똑같이 정수 개수 구매 대상으로 취급해서 같은 후보 탐색에 넣음.
@@ -600,25 +580,16 @@ function calc(){
       fillNet=bestFill.net;fillJeok=bestFill.jeok;fillPaid=bestFill.paid;
       fillLines=bestFill.lines;fillHighlight=bestFill.hi;overshootItem=bestFill.overshoot;
     }
-    const totalNet=(milOn?itemsMil*bestMil.netD:0)+fillNet;
-    const totalJeok=jeokMil+fillJeok;
-    const totalPaid=milPaid+fillPaid; // 실제로 충전해야 하는 캐시 총액(마일리지로 깎인 부분은 제외)
+    const totalNet=fillNet, totalJeok=fillJeok, totalPaid=fillPaid;
     aucTotal=totalNet; aucPaid=totalPaid; aucCostPer= remain>0?totalNet/remain*per:0;
     items.forEach(x=>x.tr.classList.remove('best'));
-    if(milOn)bestMil.tr.classList.add('best');
     fillHighlight.forEach(it=>it.tr.classList.add('best'));
 
-    // ---- 구매 목록: 개수 · 실적 · 실제 결제 금액(마일리지 제외) · (해당 시) 사용 마일리지 ----
+    // ---- 구매 목록: 개수 · 실적 · 실제 결제 금액 ----
     let idx=0;
     const rowsHtml=[];
-    if(milOn){
-      const milLeft=milBudget-milUsed;
-      rowsHtml.push(`<div class="kv"><span class="lab">${CIRCLED[idx++]} 마일리지템 · ${bestMil.name}</span><b>${itemsMil}개 · 실적 ${won(jeokMil)}원</b></div>
-        <div class="kv"><span class="lab">　└ 할인 반영 실제 결제 금액(캐시)</span><b>${won(milPaid)} 원</b></div>
-        <div class="kv"><span class="lab">　└ 사용 마일리지 (보유 ${won(num('mileage'))}+적립 ${won(earnedMil)}${milLeft>0.5?` · 잔여 ${won(milLeft)}`:''})</span><b>${won(milUsed)}</b></div>`);
-    }
     fillLines.forEach(l=>{
-      const label=l.meso?`${CIRCLED[idx++]} ${l.name}`:`${CIRCLED[idx++]} 정가템 · ${l.name}`;
+      const label=`${CIRCLED[idx++]} ${l.name}`;
       rowsHtml.push(`<div class="kv"><span class="lab">${label}</span><b>${l.cnt}개 · 실적 ${won(l.jeok)}원</b></div>
         <div class="kv"><span class="lab">　└ 할인 반영 실제 결제 금액(캐시)</span><b>${won(l.paid)} 원</b></div>`);
     });
@@ -652,7 +623,7 @@ function calc(){
   if(remain<=0){s.innerHTML=`<div class="verdict">🎉 이미 목표 등급 실적 달성! (초과 ${won(used-target)}원)</div>`;return;}
   let rows=`<div class="kv"><span class="lab">목표까지 남은 실적</span><b style="color:var(--accent-d)">${won(remain)} 원</b></div>`;
   if(mesoCostPer!==null)rows+=`<div class="kv"><span class="lab">메소마켓식만 썼을 때</span><b class="${mesoTotal<0?'pos':'neg'}">${won(mesoTotal)} 원</b></div>`;
-  if(aucCostPer!==null)rows+=`<div class="kv"><span class="lab">최적 조합 (마일→가위 + 나머지)</span><b class="${aucTotal<0?'pos':'neg'}">${won(aucTotal)} 원</b></div>`;
+  if(aucCostPer!==null)rows+=`<div class="kv"><span class="lab">최적 조합</span><b class="${aucTotal<0?'pos':'neg'}">${won(aucTotal)} 원</b></div>`;
   let verdict='';
   if(aucCostPer!==null){
     const pctAbs=aucPaid>0?Math.abs(aucTotal/aucPaid*100).toFixed(1):'0.0';
@@ -664,12 +635,12 @@ function calc(){
   } else if(mesoCostPer!==null){
     verdict=`<div class="verdict">메소마켓식 총 ${won(mesoTotal)}원</div>`;
   }
-  // 구매 목록·개수·실제 결제액·마일리지 상세 내역(aucHtml)을 결론에 같이 정리해서 보여줌
+  // 구매 목록·개수·실제 결제액 상세 내역(aucHtml)을 결론에 같이 정리해서 보여줌
   const detailHtml=aucCostPer!==null?`<div class="result" style="margin-top:12px">${aucHtml}</div>`:'';
   s.innerHTML=rows+verdict+detailHtml;
 }
 
-['usedCash','chargeDisc','cashPerEok','mesoMarket','fee','mileage','mileageRate']
+['usedCash','chargeDisc','cashPerEok','mesoMarket','fee']
   .forEach(id=>document.getElementById(id).addEventListener('input',calc));
 document.getElementById('fee').addEventListener('change',calc);
 calc();
