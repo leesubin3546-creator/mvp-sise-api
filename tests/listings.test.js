@@ -15,21 +15,21 @@ function between(start, end) {
 const calcExScore = new Function(
   `${between('const STAT_LABEL=', 'function exScoreParts')}\nreturn calcExScore;`
 )();
-const base = { wAtk: 4, wSub: 0.1, wAll: 10, wHp: 0 };
+const base = { wAtk: 4, wSub: 0, wAll: 10, wHp: 0 };
 
 assert.equal(calcExScore(
   { str: 84, dex: 48, all: 5, pad: 4 },
-  { ...base, main: 'str', sub: 'dex', attack: 'pad' }
-).score, 154.8, 'STR + 부스탯 + 올스탯% + 공격력 환산');
+  { ...base, main: 'str', attack: 'pad' }
+).score, 150, 'STR + 올스탯% + 공격력 환산');
 
 assert.equal(calcExScore(
   { int: 100, luk: 40, all: 6, mad: 5, pad: 99 },
-  { ...base, main: 'int', sub: 'luk', attack: 'mad' }
-).score, 184, '마법사는 공격력이 아니라 마력만 환산');
+  { ...base, main: 'int', attack: 'mad' }
+).score, 180, '마법사는 공격력이 아니라 마력만 환산');
 
 assert.equal(calcExScore(
   { str: 107, luk: 35, all: 6, mhp: 2800 },
-  { ...base, main: 'str', sub: 'dex', attack: 'pad' }
+  { ...base, main: 'str', attack: 'pad' }
 ).score, 167, '관련 없는 스탯과 가중치 0인 HP는 제외');
 
 // 일괄 조회의 최저가 펼침은 정확히 5개를 렌더하고 전체 목록은 명시적 버튼으로만 연다.
@@ -60,7 +60,8 @@ assert.match(html, /searchFilters=\{\.\.\.p\.filters,sortType:'PRICE_PER_ITEM_AS
   '일괄 조회는 검색 자체를 개당 가격 오름차순으로 강제');
 
 assert.match(html, /올스탯 1%당/);
-assert.match(html, /id="attackType"/);
+assert.doesNotMatch(html, /id="attackType"/);
+assert.doesNotMatch(html, /id="subStat"/);
 assert.match(html, /mvpListings\.exWeights\.v2/);
 
 console.log('listings tests passed');

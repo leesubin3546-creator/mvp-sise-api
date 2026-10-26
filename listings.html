@@ -80,9 +80,6 @@
   .chip.ex{background:#e4eef3;color:#3f6376}
   .osum.ex{color:#3f6376} .osum.ex b{background:#dfeaf1;color:#3f6376}
   .exsc{font-size:10px;padding:1px 5px;border-radius:4px;background:#dfeaf1;color:#3f6376}
-  .ex-formula{grid-column:1/-1;background:#eef4f6;border:1px solid #d8e6eb;border-radius:8px;
-    padding:8px 10px;font-size:11.5px;color:#496573;line-height:1.55}
-  .ex-formula b{margin-right:5px}
   /* 지금 걸린 조건 줄 */
   .applied{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px;
     padding:10px 12px;background:#faf6ee;border:1px solid var(--line);border-radius:9px}
@@ -356,9 +353,9 @@
       <summary style="cursor:pointer;font-size:12.5px;color:var(--sub);font-weight:700">
         ⚙ 추가 옵션 환산 기준</summary>
       <div class="hint" style="margin:9px 0 11px">
-        옥션 원본의 주스탯·부스탯·올스탯%·공격력/마력을 각각 환산해 하나의 점수로 비교해.
-        기본값은 <b>부스탯 10 = 주스탯 1, 올스탯 1% = 주스탯 10, 공격력/마력 1 = 주스탯 4</b>이며
-        캐릭터 스펙에 맞게 바꿀 수 있어.
+        옥션 원본의 주스탯·올스탯%·공격력/마력을 하나의 점수로 환산해 비교해.
+        기본값은 <b>올스탯 1% = 주스탯 10, 공격력/마력 1 = 주스탯 4</b>야.
+        INT는 마력, 나머지 주스탯은 공격력을 자동으로 사용해.
       </div>
       <div class="row">
         <div class="col" style="max-width:150px">
@@ -369,27 +366,12 @@
           </select>
         </div>
         <div class="col" style="max-width:150px">
-          <label>부스탯</label>
-          <select id="subStat">
-            <option value="auto">자동</option><option value="str">STR</option>
-            <option value="dex">DEX</option><option value="int">INT</option>
-            <option value="luk">LUK</option><option value="none">사용 안 함</option>
-          </select>
-        </div>
-        <div class="col" style="max-width:150px">
-          <label>공격 능력치</label>
-          <select id="attackType">
-            <option value="auto">자동</option><option value="pad">공격력</option>
-            <option value="mad">마력</option>
-          </select>
-        </div>
-        <div class="col" style="max-width:150px">
           <label>공격력/마력 1당</label>
           <input id="wAtk" type="text" inputmode="decimal" value="4">
         </div>
         <div class="col" style="max-width:150px">
           <label>부스탯 1당</label>
-          <input id="wSub" type="text" inputmode="decimal" value="0.1">
+          <input id="wSub" type="text" inputmode="decimal" value="0">
         </div>
         <div class="col" style="max-width:150px">
           <label>올스탯 1%당</label>
@@ -1143,17 +1125,12 @@ function nameCell(r){
 // 하나로 못 박지 않고 입력으로 뺐음(기본값은 흔히 쓰는 "공격력 1 = 주스탯 4" 기준).
 // exStat 은 유저스크립트가 보내주는 옥션 원본 수치라 글자 파싱이 아님.
 const STAT_LABEL={str:'STR',dex:'DEX',int:'INT',luk:'LUK'};
-// 일반적인 직업 기준 자동 부스탯. 해적처럼 주스탯이 STR/DEX인 경우도 서로 반대쪽이 부스탯임.
-const AUTO_SUB_STAT={str:'dex',dex:'str',int:'luk',luk:'dex'};
 
 function currentExConfig(){
   const main=$('mainStat').value;
-  const subChoice=$('subStat').value;
-  const attackChoice=$('attackType').value;
   return {
     main,
-    sub:subChoice==='auto'?AUTO_SUB_STAT[main]:subChoice,
-    attack:attackChoice==='auto'?(main==='int'?'mad':'pad'):attackChoice,
+    attack:main==='int'?'mad':'pad',
     wAtk:num('wAtk'),wSub:num('wSub'),wAll:num('wAll'),wHp:num('wHp')
   };
 }
@@ -1163,7 +1140,8 @@ function currentExConfig(){
 function calcExScore(st,cfg){
   if(!st)return null;
   const mainV=st[cfg.main]||0;
-  const subV=cfg.sub==='none'?0:(st[cfg.sub]||0);
+  const subV=['str','dex','int','luk'].filter(k=>k!==cfg.main)
+    .reduce((sum,k)=>sum+(st[k]||0),0);
   const allPct=st.all||0;
   const attackV=st[cfg.attack]||0;
   const hpV=st.mhp||0;
@@ -1172,7 +1150,6 @@ function calcExScore(st,cfg){
     score:Math.round(raw*10)/10,
     mainV,subV,allPct,attackV,hpV,
     mainLabel:STAT_LABEL[cfg.main],
-    subLabel:cfg.sub==='none'?null:STAT_LABEL[cfg.sub],
     attackLabel:cfg.attack==='mad'?'마력':'공격력',
     cfg
   };
@@ -1184,7 +1161,7 @@ function formatScore(v){return Number.isInteger(v)?String(v):Number(v).toFixed(1
 function exFormula(p){
   if(!p)return '';
   const a=[`${p.mainLabel} ${p.mainV}`];
-  if(p.subLabel&&p.subV)a.push(`${p.subLabel} ${p.subV}×${p.cfg.wSub}`);
+  if(p.subV&&p.cfg.wSub)a.push(`기타 스탯 ${p.subV}×${p.cfg.wSub}`);
   if(p.allPct)a.push(`올스탯 ${p.allPct}%×${p.cfg.wAll}`);
   if(p.attackV)a.push(`${p.attackLabel} ${p.attackV}×${p.cfg.wAtk}`);
   if(p.hpV&&p.cfg.wHp)a.push(`HP ${p.hpV}×${p.cfg.wHp}`);
@@ -1255,8 +1232,7 @@ function detailHtml(r){
   return `<div class="detail-in">
     ${optBlock('잠재능력',r.potentialGrade,r.potential)}
     ${optBlock('에디셔널 잠재능력',r.additionalGrade,r.additional)}
-    ${optBlock('추가 옵션'+(ep?` <span class="exsc">환산 ${formatScore(ep.score)}</span>`:''),null,r.exOption)}
-    ${ep?`<div class="ex-formula"><b>환산식</b> ${esc(exFormula(ep))}</div>`:''}
+    ${optBlock('추가 옵션'+(ep?` <span class="exsc" title="${esc(exFormula(ep))}">환산 ${formatScore(ep.score)}</span>`:''),null,r.exOption)}
     <div class="ob"><b>스타포스 / 주문서 강화</b>
       <ul><li>${sf}</li><li>주문서 ${scroll}</li></ul></div>
     <div class="ob"><b>교환 / 가위</b>
@@ -1269,7 +1245,7 @@ $('addPot').onclick=()=>{addOptRow('potRows');};
 $('addAdd').onclick=()=>{addOptRow('addRows');};
 $('addEx').onclick=()=>{addOptRow('exRows');};
 $('addScroll').onclick=()=>{addOptRow('scrollRows');};
-['mainStat','subStat','attackType','wAtk','wSub','wAll','wHp'].forEach(id=>{
+['mainStat','wAtk','wSub','wAll','wHp'].forEach(id=>{
   const e=$(id);
   e.addEventListener('input',()=>{ saveExWeights(); paint(); renderBatch(); });
   e.addEventListener('change',()=>{ saveExWeights(); paint(); renderBatch(); });
@@ -1278,13 +1254,12 @@ $('addScroll').onclick=()=>{addOptRow('scrollRows');};
 const LS_EXW='mvpListings.exWeights.v2';
 function saveExWeights(){
   try{localStorage.setItem(LS_EXW,JSON.stringify({mainStat:$('mainStat').value,
-    subStat:$('subStat').value,attackType:$('attackType').value,
     wAtk:$('wAtk').value,wSub:$('wSub').value,wAll:$('wAll').value,wHp:$('wHp').value}));}catch(e){}
 }
 function loadExWeights(){
   let w=null; try{ w=JSON.parse(localStorage.getItem(LS_EXW)); }catch(e){}
   if(!w)return;
-  ['mainStat','subStat','attackType','wAtk','wSub','wAll','wHp'].forEach(k=>{ if(w[k]!=null)$(k).value=w[k]; });
+  ['mainStat','wAtk','wSub','wAll','wHp'].forEach(k=>{ if(w[k]!=null)$(k).value=w[k]; });
 }
 
 ['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',
