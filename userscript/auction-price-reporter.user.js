@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MVP 계산기 - 메이플 옥션 시세 리포터
 // @namespace    mvp-mesocalc
-// @version      1.5.0
+// @version      1.6.0
 // @description  옥션(auction.maplestory.nexon.com) 구매/시세 검색 결과의 개당 최저가·최근 체결가와 매물 목록을 읽어서 MVP 계산기/매물 찾기 백엔드로 보고합니다. 로그인은 항상 사용자 본인 브라우저 세션을 그대로 사용하며, 이 스크립트가 로그인을 대신하거나 자격 증명을 저장/전송하지 않습니다.
 // @author       -
 // @match        https://auction.maplestory.nexon.com/buy*
@@ -103,6 +103,31 @@
     return null;
   }
 
+  // 0 이 아닌 스탯만 남김. 추가 옵션 환산에 쓰임.
+  function pickStat(o) {
+    if (!o || typeof o !== 'object') return null;
+    const out = {};
+    for (const k of Object.keys(o)) if (Number.isFinite(o[k]) && o[k] !== 0) out[k] = o[k];
+    return Object.keys(out).length ? out : null;
+  }
+
+  // "(가위 사용 잔여 횟수 : 8 / 10)" → { left: 8, max: 10 }
+  function parseCut(tradeDesc) {
+    if (!Array.isArray(tradeDesc)) return null;
+    for (const line of tradeDesc) {
+      const m = String(line).match(/가위\s*사용\s*잔여\s*횟수\s*:\s*(\d+)\s*\/\s*(\d+)/);
+      if (m) return { left: parseInt(m[1], 10), max: parseInt(m[2], 10) };
+    }
+    return null;
+  }
+
+  // "장착 시 교환 불가" / "1회 교환 가능 (거래 후 교환 불가)" 같은 교환 조건 줄
+  function tradeNoteOf(tradeDesc) {
+    if (!Array.isArray(tradeDesc)) return null;
+    const line = tradeDesc.map(String).find(x => /교환/.test(x) && !/가위/.test(x));
+    return line ? line.replace(/\s+/g, ' ').trim() : null;
+  }
+
   function parseListingRowsFiber() {
     const btns = [...document.querySelectorAll('button')]
       .filter(b => (b.textContent || '').trim() === '구매하기');
@@ -144,6 +169,12 @@
         potential: texts(up.potential),
         additional: texts(up.additionalPotential),
         exOption: texts(up.exOption),
+        // 추가 옵션을 수치로도 보냄 — 글로 된 줄만으로는 계산기 쪽에서 환산을 못 함
+        exStat: pickStat(tt.exOptionStat),
+        // 가위 사용 잔여 횟수와 교환 조건은 toolTip.tradeDesc 에 글로 들어있음
+        // (별도 숫자 필드가 없어서 거기서 뽑음)
+        cut: parseCut(tt.tradeDesc),
+        tradeNote: tradeNoteOf(tt.tradeDesc),
         // 전체 월드로 검색하면 타 월드 매물이 섞여 나옴(구매 시 월드 이전 수수료가 붙음)
         isMyWorld: typeof it.isMyWorld === 'boolean' ? it.isMyWorld : null,
         detailed: true

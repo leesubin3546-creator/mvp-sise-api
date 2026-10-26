@@ -76,6 +76,10 @@
   .chip.sf{background:#fdf0d5;color:#8a6a1f}
   .chip.up{background:#e6eef5;color:#3d6280}
   .chip.world{background:#ece4f3;color:#61478c}
+  .chip.cut{background:#f3e4e4;color:#8c4747}
+  .chip.ex{background:#e4eef3;color:#3f6376}
+  .osum.ex{color:#3f6376} .osum.ex b{background:#dfeaf1;color:#3f6376}
+  .exsc{font-size:10px;padding:1px 5px;border-radius:4px;background:#dfeaf1;color:#3f6376}
   /* 지금 걸린 조건 줄 */
   .applied{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px;
     padding:10px 12px;background:#faf6ee;border:1px solid var(--line);border-radius:9px}
@@ -91,6 +95,8 @@
   .bitem input{width:auto;margin:0;cursor:pointer}
   tr.brow{cursor:pointer}
   tr.brow:hover{background:#faf7f0}
+  td.peek{cursor:pointer}
+  td.peek:hover{color:var(--accent-d);text-decoration:underline}
   td.none{color:var(--sub);text-align:center}
   /* 시세 요약 */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;
@@ -318,6 +324,39 @@
   <!-- 3. 결과 -->
   <div class="card">
     <h2><span class="n">3</span> 매물 목록 <span id="resultMeta" style="font-size:12px;color:var(--sub);font-weight:400"></span></h2>
+    <details id="exCalcBox" style="margin-bottom:14px">
+      <summary style="cursor:pointer;font-size:12.5px;color:var(--sub);font-weight:700">
+        ⚙ 추가 옵션 환산 기준</summary>
+      <div class="hint" style="margin:9px 0 11px">
+        추옵은 수치가 제각각이라 그대로는 비교가 안 돼서 하나로 모아 점수를 냄. 가중치는 직업·세팅마다
+        달라서 못 박지 않고 열어뒀어 — 기본값은 흔히 쓰는 <b>공격력 1 = 주스탯 4</b> 기준이야.
+      </div>
+      <div class="row">
+        <div class="col" style="max-width:150px">
+          <label>주스탯</label>
+          <select id="mainStat">
+            <option value="str">STR</option><option value="dex">DEX</option>
+            <option value="int">INT</option><option value="luk">LUK</option>
+          </select>
+        </div>
+        <div class="col" style="max-width:150px">
+          <label>공격력/마력 1당</label>
+          <input id="wAtk" type="text" inputmode="decimal" value="4">
+        </div>
+        <div class="col" style="max-width:150px">
+          <label>부스탯 1당</label>
+          <input id="wSub" type="text" inputmode="decimal" value="0">
+        </div>
+        <div class="col" style="max-width:150px">
+          <label>올스탯 1당</label>
+          <input id="wAll" type="text" inputmode="decimal" value="1">
+        </div>
+        <div class="col" style="max-width:150px">
+          <label>최대 HP 1당</label>
+          <input id="wHp" type="text" inputmode="decimal" value="0">
+        </div>
+      </div>
+    </details>
     <div id="resultWrap"><div class="empty">아직 검색 결과가 없어. 위에서 조건을 걸고 검색해줘.</div></div>
   </div>
 
@@ -786,18 +825,31 @@ function renderBatch(){
     const cheapest=(b.data.rows||[])
       .filter(r=>Number.isFinite(r.pricePerUnit))
       .reduce((a,r)=>!a||r.pricePerUnit<a.pricePerUnit?r:a,null);
+    b._cheapest=cheapest;
     return `<tr class="brow" data-b="${i}">
       <td>${esc(b.name)}</td>
       <td>${b.data.total.toLocaleString()}건</td>
       <td class="price">${st?meso(st.min):'-'}</td>
       <td>${st?meso(st.med):'-'}</td>
-      <td>${cheapest?esc(cheapest.name):'-'}</td>
-    </tr>`;
+      <td class="peek"${cheapest?' data-peek="'+i+'"':''}>${cheapest?esc(cheapest.name)+' <span class="caret">▶</span>':'-'}</td>
+    </tr>
+    ${cheapest?`<tr class="detail" data-peek-d="${i}" hidden><td colspan="5">${detailHtml(cheapest)}</td></tr>`:''}`;
   }).join('');
   $('batchResult').innerHTML=`<table>
     <thead><tr><th>저장된 조건</th><th>전체 매물</th><th>최저가</th><th>중앙값</th><th>최저가 매물</th></tr></thead>
     <tbody>${body}</tbody></table>
-    <div class="hint" style="margin-top:8px">행을 누르면 그 조건의 매물 전체가 아래 <b>매물 목록</b>에 떠.</div>`;
+    <div class="hint" style="margin-top:8px">행을 누르면 그 조건의 매물 전체가 아래 <b>매물 목록</b>에 뜨고,
+      <b>최저가 매물</b> 칸을 누르면 그 매물 정보만 바로 펼쳐져.</div>`;
+  // 최저가 매물 칸: 행 전체 동작(목록 펼치기) 대신 그 매물 상세만 보여줌
+  $('batchResult').querySelectorAll('td.peek[data-peek]').forEach(td=>{
+    td.onclick=e=>{
+      e.stopPropagation();
+      const d=$('batchResult').querySelector(`tr[data-peek-d="${td.dataset.peek}"]`);
+      const open=d.hidden;
+      d.hidden=!open;
+      td.querySelector('.caret').textContent=open?'▼':'▶';
+    };
+  });
   $('batchResult').querySelectorAll('tr.brow').forEach(tr=>{
     tr.onclick=()=>{
       const b=batchResults[+tr.dataset.b];
@@ -895,6 +947,7 @@ let lastResult=null, sortState=null;
 const SORT_COLS={
   per:{label:'개당 가격', get:r=>r.pricePerUnit},
   sf:{label:'★', get:r=>r.starforce},
+  ex:{label:'추옵', get:r=>exScore(r)},
   remain:{label:'남은 시간', get:r=>r.remainMin}
 };
 
@@ -922,9 +975,10 @@ function paint(){
       <td class="price">${meso(r.pricePerUnit??r.priceTotal)}${tot}</td>
       <td>${vsMedian(r,st)}</td>
       <td>${sfLabel(r)}</td>
+      <td>${exScore(r)??'-'}</td>
       <td>${t}</td>
     </tr>
-    <tr class="detail" data-d="${i}" hidden><td colspan="5">${detailHtml(r)}</td></tr>`;
+    <tr class="detail" data-d="${i}" hidden><td colspan="6">${detailHtml(r)}</td></tr>`;
   }).join('');
   const th=(key,text,extra)=>{
     if(!key)return `<th${extra||''}>${text}</th>`;
@@ -934,7 +988,7 @@ function paint(){
   };
   $('resultWrap').innerHTML=statsCard(st)+`<table>
     <thead><tr>${th(null,'아이템')}${th('per','개당 가격')}${th(null,'시세 대비')}
-      ${th('sf','★')}${th('remain','남은 시간')}</tr></thead>
+      ${th('sf','★')}${th('ex','추옵')}${th('remain','남은 시간')}</tr></thead>
     <tbody>${body}</tbody></table>`;
   $('resultWrap').querySelectorAll('th.sortable').forEach(h=>{
     h.onclick=()=>{
@@ -987,12 +1041,33 @@ function optSummary(label,list,cls){
 function nameCell(r){
   const g=[['잠재',r.potentialGrade],['에디',r.additionalGrade]]
     .filter(([,v])=>v).map(([k,v])=>`<span class="grade g-${esc(v)}" title="${k}">${esc(v)}</span>`).join('');
-  // 잠재·에디 옵션은 매물을 고르는 핵심이라 접힌 상태에서도 한 줄로 보여줌
-  const opts=optSummary('잠',r.potential,'pot')+optSummary('에',r.additional,'add');
+  // 잠재·에디·추옵은 매물을 고르는 핵심이라 접힌 상태에서도 한 줄로 보여줌
+  const opts=optSummary('잠',r.potential,'pot')
+    +optSummary('에',r.additional,'add')
+    +optSummary('추',r.exOption,'ex');
   return `<span class="caret">▶</span><span class="iname">${esc(r.name)}</span>${g}`
     +(opts?`<div class="osums">${opts}</div>`:'')
     +chips(r);
 }
+
+// ---- 추가 옵션 환산 ----
+// 추옵끼리 비교하려면 서로 다른 수치를 한 단위로 모아야 함. 가중치는 직업·세팅마다 달라서
+// 하나로 못 박지 않고 입력으로 뺐음(기본값은 흔히 쓰는 "공격력 1 = 주스탯 4" 기준).
+// exStat 은 유저스크립트가 보내주는 옥션 원본 수치라 글자 파싱이 아님.
+const MAIN_STAT_KEY={str:'str',dex:'dex',int:'int',luk:'luk'};
+function exScore(r){
+  const st=r.exStat;
+  if(!st)return null;
+  const main=$('mainStat').value;             // str/dex/int/luk
+  const wAtk=num('wAtk'), wSub=num('wSub'), wAll=num('wAll'), wHp=num('wHp');
+  const atk=(main==='int'? (st.mad||0) : (st.pad||0));   // 마법사는 마력, 나머지는 공격력
+  const mainV=st[MAIN_STAT_KEY[main]]||0;
+  const subV=['str','dex','int','luk'].filter(k=>k!==main).reduce((a,k)=>a+(st[k]||0),0);
+  const allV=st.all||0;
+  const hpV=st.mhp||0;
+  return Math.round(mainV + atk*wAtk + subV*wSub + allV*wAll + hpV*wHp);
+}
+function num(id){const v=parseFloat(($(id).value||'').replace(/,/g,''));return Number.isFinite(v)?v:0;}
 
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
@@ -1020,6 +1095,9 @@ function chips(r){
   if(r.isMyWorld===false)c.push('<span class="chip world">타 월드</span>');
   if(r.qty>1)c.push(`<span class="chip">${r.qty}개 묶음</span>`);
   if(r.upgradeCount)c.push(`<span class="chip up">주문서 ${r.upgradeCount}</span>`);
+  // 가위를 이미 쓴 매물은 남은 횟수가 줄어 있어서 되팔 때 불리함 — 눈에 띄게 둠
+  if(r.cut&&r.cut.left<r.cut.max)c.push(`<span class="chip cut">가위 ${r.cut.left}/${r.cut.max}</span>`);
+  // 추옵 환산은 전용 칼럼이 있어서 칩으로 또 보여주지 않음
   if(typeof r.combatPower==='number'&&r.combatPower){
     const up=r.combatPower>0;
     c.push(`<span class="chip ${up?'cp-up':'cp-down'}">전투력 ${up?'+':'−'}${Math.abs(r.combatPower).toLocaleString()}</span>`);
@@ -1045,12 +1123,16 @@ function detailHtml(r){
     ? `${r.upgradeCount}회 사용${r.upgradeRemaining!=null?` · 잔여 ${r.upgradeRemaining}회`:''}`
       +`${r.upgradeFailure?` · 복구 가능 ${r.upgradeFailure}회`:''}`
     : '정보 없음';
+  const cut=r.cut?`가위 사용 잔여 ${r.cut.left}/${r.cut.max}회`:'가위 정보 없음';
+  const sc=exScore(r);
   return `<div class="detail-in">
     ${optBlock('잠재능력',r.potentialGrade,r.potential)}
     ${optBlock('에디셔널 잠재능력',r.additionalGrade,r.additional)}
-    ${optBlock('추가 옵션',null,r.exOption)}
+    ${optBlock('추가 옵션'+(sc!=null?` <span class="exsc">환산 ${sc}</span>`:''),null,r.exOption)}
     <div class="ob"><b>스타포스 / 주문서 강화</b>
       <ul><li>${sf}</li><li>주문서 ${scroll}</li></ul></div>
+    <div class="ob"><b>교환 / 가위</b>
+      <ul><li>${esc(r.tradeNote||'교환 조건 표기 없음')}</li><li>${cut}</li></ul></div>
   </div>`;
 }
 
@@ -1059,6 +1141,22 @@ $('addPot').onclick=()=>{addOptRow('potRows');};
 $('addAdd').onclick=()=>{addOptRow('addRows');};
 $('addEx').onclick=()=>{addOptRow('exRows');};
 $('addScroll').onclick=()=>{addOptRow('scrollRows');};
+['mainStat','wAtk','wSub','wAll','wHp'].forEach(id=>{
+  const e=$(id);
+  e.addEventListener('input',()=>{ saveExWeights(); paint(); renderBatch(); });
+  e.addEventListener('change',()=>{ saveExWeights(); paint(); renderBatch(); });
+});
+const LS_EXW='mvpListings.exWeights.v1';
+function saveExWeights(){
+  try{localStorage.setItem(LS_EXW,JSON.stringify({mainStat:$('mainStat').value,
+    wAtk:$('wAtk').value,wSub:$('wSub').value,wAll:$('wAll').value,wHp:$('wHp').value}));}catch(e){}
+}
+function loadExWeights(){
+  let w=null; try{ w=JSON.parse(localStorage.getItem(LS_EXW)); }catch(e){}
+  if(!w)return;
+  ['mainStat','wAtk','wSub','wAll','wHp'].forEach(k=>{ if(w[k]!=null)$(k).value=w[k]; });
+}
+
 ['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',
  'sfMin','sfMax','potGrade','addGrade','sortType','limit','worldScope','sampleN','upgradeMin','upgradeMax',
  'potAddAll','addAddAll']
@@ -1069,6 +1167,7 @@ $('addScroll').onclick=()=>{addOptRow('scrollRows');};
   try{ last=JSON.parse(localStorage.getItem(LS_LAST)); }catch(e){}
   if(last)applyFilters(last);
   if(!$('potRows').children.length)addOptRow('potRows');
+  loadExWeights();
   renderPresets();
   renderBatchPicker();
   renderApplied();
