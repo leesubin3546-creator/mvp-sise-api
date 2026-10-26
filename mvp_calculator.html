@@ -206,6 +206,43 @@
     </div>
   </div>
 
+  <!-- 메이플크레딧 (참고) -->
+  <div class="card">
+    <details id="creditBox">
+      <summary style="cursor:pointer;font-weight:800;font-size:15px">메이플크레딧으로 얼마나 돌려받나 (참고)</summary>
+      <div class="hint" style="margin:10px 0 14px">
+        엠작으로 쓴 넥슨캐시의 일정 비율이 메이플크레딧으로 쌓여. 캐시샵 할인엔 못 쓰고 <b>크레딧샵 전용</b>
+        이라 위 최적 조합 계산에는 넣지 않았고, 여기서 따로 "덤이 얼마짜리냐"만 따져봐.
+        크레딧샵 물건은 선물은 안 되지만 <b>사용 전 1회 거래</b>가 되니까 메소로 환산이 돼.
+      </div>
+      <div class="row">
+        <div class="col">
+          <label>적립률 (%)</label>
+          <input id="creditRate" type="text" inputmode="decimal" value="5">
+          <div class="hint">넥슨캐시 결제액 기준. 10캐시 미만 아이템·선물하기는 적립 안 됨</div>
+        </div>
+        <div class="col">
+          <label>교환할 크레딧샵 물건</label>
+          <select id="creditItem">
+            <option value="10000">프라임 큐브 (10,000 크레딧)</option>
+            <option value="9900">솔 에르다 (9,900 크레딧)</option>
+            <option value="0">직접 입력</option>
+          </select>
+        </div>
+        <div class="col">
+          <label>크레딧 가격 (직접 입력 시)</label>
+          <input id="creditCost" type="text" inputmode="numeric" value="10000">
+        </div>
+        <div class="col">
+          <label>그 물건 시세 (억메소)</label>
+          <input id="creditSell" type="text" inputmode="decimal" value="0">
+          <div class="hint">경매장 개당 시세. 0이면 메소 환산은 생략</div>
+        </div>
+      </div>
+      <div class="result" id="creditResult"></div>
+    </details>
+  </div>
+
   <!-- 4. 요약 -->
   <div class="card summary">
     <h2><span class="n">4</span> 결론</h2>
@@ -618,6 +655,12 @@ function calc(){
   document.getElementById('auctionResult').innerHTML=
     '<div class="hint">🔍 계산 결과(구매 목록·실제 결제액·손익)는 아래 <b>4. 결론</b>에 정리돼 있어. 위 아이템 표에서 초록색으로 표시된 게 선택된 조합이야.</div>';
 
+  // ---- 메이플크레딧 (참고) ----
+  // 2026-09-17 개편 뒤로 넥슨캐시 결제액의 일정 비율이 메이플크레딧으로 쌓임.
+  // 캐시샵 할인에는 못 쓰고 크레딧샵에서만 쓰는 재화라 비용 계산 본문에는 넣지 않고,
+  // "덤이 얼마짜리인지"만 따로 환산해서 보여줌.
+  renderCredit(remain,aucPaid);
+
   // ---- 결론 ----
   const s=document.getElementById('summary');
   if(remain<=0){s.innerHTML=`<div class="verdict">🎉 이미 목표 등급 실적 달성! (초과 ${won(used-target)}원)</div>`;return;}
@@ -640,8 +683,49 @@ function calc(){
   s.innerHTML=rows+verdict+detailHtml;
 }
 
-['usedCash','chargeDisc','cashPerEok','mesoMarket','fee']
+function renderCredit(remain,paid){
+  const box=document.getElementById('creditResult');
+  const pick=document.getElementById('creditItem').value;
+  const costInput=document.getElementById('creditCost');
+  // 고른 물건이 있으면 크레딧 가격은 그 값으로 고정해서 보여줌(직접 입력일 때만 수정 가능)
+  if(+pick>0){ costInput.value=pick; costInput.readOnly=true; }
+  else costInput.readOnly=false;
+
+  const rate=num('creditRate')/100;
+  const cost=num('creditCost');
+  const sell=parseFloat(document.getElementById('creditSell').value)||0;
+  const cpe=cashPerEok();
+  const fee=num('fee')/100;
+
+  // 적립 기준은 "소모한 넥슨캐시" = 실적. 충전 할인으로 덜 낸 원화가 아님.
+  const credits=Math.floor(remain*rate);
+  if(!(credits>0)||!(cost>0)){
+    box.innerHTML='<div class="hint">목표까지 남은 실적과 크레딧 가격이 있어야 계산돼.</div>';
+    return;
+  }
+  const qty=Math.floor(credits/cost);
+  const left=credits-qty*cost;
+  let rows=`<div class="kv"><span class="lab">엠작으로 쌓이는 메이플크레딧</span><b>${won(credits)}</b></div>
+    <div class="kv"><span class="lab">교환 가능 개수</span><b>${qty}개${left>0?` · 잔여 ${won(left)} 크레딧`:''}</b></div>`;
+  if(sell>0&&qty>0){
+    const meso=qty*sell;                       // 억메소
+    const cash=meso*(1-fee)*cpe;               // 팔아서 손에 쥐는 현금 환산(수수료 뗀 뒤)
+    rows+=`<div class="kv"><span class="lab">메소 환산 (경매장 시세 기준)</span><b>${meso.toFixed(2)} 억</b></div>
+      <div class="kv"><span class="lab">현금 환산 (수수료 ${won(num('fee'))}% 반영)</span><b class="pos">${won(cash)} 원</b></div>`;
+    if(paid>0){
+      rows+=`<div class="kv"><span class="lab">실제 결제액 대비</span><b class="pos">${(cash/paid*100).toFixed(1)}% 추가 회수</b></div>`;
+    }
+  } else if(qty>0){
+    rows+='<div class="hint">그 물건의 경매장 시세(억메소)를 넣으면 현금 환산까지 나와.</div>';
+  } else {
+    rows+='<div class="hint">아직 한 개도 못 바꾸는 양이야.</div>';
+  }
+  box.innerHTML=rows;
+}
+
+['usedCash','chargeDisc','cashPerEok','mesoMarket','fee','creditRate','creditCost','creditSell']
   .forEach(id=>document.getElementById(id).addEventListener('input',calc));
+document.getElementById('creditItem').addEventListener('change',calc);
 document.getElementById('fee').addEventListener('change',calc);
 calc();
 </script>
