@@ -380,9 +380,15 @@ function setFetchButtonsDisabled(disabled){
 // "다른 환경에서 접속이 감지되어 세션이 종료되었습니다"로 옥션이 세션을 강제 종료시키는 문제가 있었음
 // (탭을 새로 여는지 재사용하는지와 무관하게, 동시에 2개가 열려있는 것 자체가 원인).
 let auctionWin=null;
-function openOrReuseTab(win,url){
+// 새로 연 탭에 곧바로 검색 URL을 넣으면 옥션이 가끔 파라미터를 버리고 "검색결과가 초기화되었습니다"
+// 만 띄움(앱이 뜨기 전에 주소가 들어가서 그런 듯). 탭을 먼저 띄워 준비시킨 뒤 주소를 넣음.
+async function openOrReuseTab(win,url){
   if(win&&!win.closed){ win.location.href=url; return win; }
-  return window.open(url,'_blank');
+  const w=window.open('https://auction.maplestory.nexon.com/buy','_blank');
+  if(!w)return w;
+  await new Promise(r=>setTimeout(r,2500));
+  try{ w.location.href=url; }catch(e){}
+  return w;
 }
 function closeAuctionWin(){
   try{auctionWin&&!auctionWin.closed&&auctionWin.close();}catch(e){}
@@ -403,7 +409,7 @@ async function fetchOnePrice(name,base,tr,{timeoutMs=12000,progress='',settleMs=
   // "하반기 BEST 프리미엄 성형 쿠폰" 같은 별개 아이템까지 같이 잡혀서 서로 다른 아이템끼리 가격이 뒤섞임.
   const buyUrl=`https://auction.maplestory.nexon.com/buy?searchTab=condition&keyword=${kw}&isExactMatch=true&page=1&limit=20&sortType=PRICE_PER_ITEM_ASC&itemCategory=ALL_CATEGORIES`;
   const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 대비 약간의 여유
-  auctionWin=openOrReuseTab(auctionWin,buyUrl);
+  auctionWin=await openOrReuseTab(auctionWin,buyUrl);
   setFetchStatus(`${progress}⏳ "${name}" 구매 최저가 확인 중...`);
   await sleep(settleMs);
   const startedAt=Date.now();

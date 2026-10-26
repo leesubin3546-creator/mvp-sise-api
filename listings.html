@@ -95,6 +95,20 @@
   .stat i{display:block;font-size:10px;color:var(--sub);font-style:normal;margin-top:2px}
   .stats-note{grid-column:1/-1;font-size:11.5px;color:var(--sub);line-height:1.65;
     border-top:1px solid var(--line);padding-top:9px;margin-top:3px}
+  /* 목록 가독성 */
+  .iname{font-weight:600}
+  .osums{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;line-height:1.5}
+  .osum b{display:inline-block;min-width:15px;margin-right:4px;font-size:10px;font-weight:700;
+    padding:1px 4px;border-radius:4px;vertical-align:1px}
+  .osum.pot{color:#4a6a2f} .osum.pot b{background:#e9f3d8;color:#5f7a2a}
+  .osum.add{color:#6b5a2a} .osum.add b{background:#f6ebd2;color:#9a7521}
+  td.price i.sub{display:block;font-size:11px;font-weight:500;color:var(--sub);font-style:normal}
+  tr.cheap-row>td:first-child{box-shadow:inset 3px 0 0 #6aa06f}
+  th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  th.sortable:hover{color:var(--accent-d)}
+  th.sortable em{font-style:normal;font-size:9px;margin-left:3px;opacity:.5}
+  th.sortable.on{color:var(--accent-d)}
+  th.sortable.on em{opacity:1}
   .vs{font-size:12px;font-weight:700;color:var(--sub)}
   .vs.deal{color:#2f7a3f}
   .vs.cheap{color:#4d8257}
@@ -600,9 +614,16 @@ async function refreshUserscriptStatus(){
 // ---- 옥션 탭 (1개만 열어서 계속 재사용) ----
 // 같은 넥슨 계정으로 옥션 탭이 여러 개 동시에 열려 있으면 세션이 강제 종료돼서, 항상 1개만 씀.
 let auctionWin=null;
-function openOrReuseTab(url){
+// 새로 연 탭에 곧바로 검색 URL을 넣으면 옥션이 가끔 파라미터를 통째로 버리고
+// "검색결과가 초기화되었습니다"만 띄움(앱이 뜨기 전에 주소가 들어가서 그런 듯).
+// 같은 탭에 두 번째로 넣으면 멀쩡히 되길래, 탭을 먼저 띄워서 준비시킨 뒤 주소를 넣음.
+async function openOrReuseTab(url){
   if(auctionWin&&!auctionWin.closed){ auctionWin.location.href=url; return auctionWin; }
-  return window.open(url,'_blank');
+  const w=window.open('https://auction.maplestory.nexon.com/buy','_blank');
+  if(!w)return w;
+  await new Promise(r=>setTimeout(r,2500));
+  try{ w.location.href=url; }catch(e){}
+  return w;
 }
 function closeAuctionWin(){
   try{ if(auctionWin&&!auctionWin.closed)auctionWin.close(); }catch(e){}
@@ -623,7 +644,7 @@ $('searchBtn').onclick=async()=>{
     fetch(AUCTION_BACKEND+'/api/ping').catch(()=>{}); // 콜드스타트 미리 깨우기
     refreshUserscriptStatus();
     const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 여유
-    auctionWin=openOrReuseTab(url);
+    auctionWin=await openOrReuseTab(url);
     const pages=Math.max(1,+f.sampleN||1);
     setStatus(pages>1
       ? `⏳ 옥션 탭에서 검색 중... 시세 구간 ${pages}곳을 훑느라 조금 걸려 (검색 횟수는 1회만 소모).`
@@ -731,36 +752,112 @@ function render(d){
       </div>`;
     return;
   }
+  lastResult=d;
+  paint();
+}
+
+// 정렬 상태. null 이면 옥션이 준 순서 그대로.
+let lastResult=null, sortState=null;
+const SORT_COLS={
+  per:{label:'개당 가격', get:r=>r.pricePerUnit},
+  sf:{label:'★', get:r=>r.starforce},
+  remain:{label:'남은 시간', get:r=>r.remainMin}
+};
+
+function paint(){
+  const d=lastResult; if(!d)return;
   const st=priceStats(d);
-  const body=rows.map((r,i)=>{
-    const g=[r.potentialGrade,r.additionalGrade].filter(Boolean)
-      .map(x=>`<span class="grade g-${esc(x)}">${esc(x)}</span>`).join('');
-    const per=r.qty>1&&r.pricePerUnit?`<div style="font-size:11.5px;color:var(--sub)">${r.qty}개 · 개당 ${meso(r.pricePerUnit)}</div>`:'';
+  let rows=(d.rows||[]).map((r,i)=>({r,i}));
+  if(sortState){
+    const get=SORT_COLS[sortState.key].get, dir=sortState.dir==='desc'?-1:1;
+    rows=rows.slice().sort((a,b)=>{
+      const x=get(a.r), y=get(b.r);
+      if(x==null&&y==null)return a.i-b.i;
+      if(x==null)return 1;          // 값 없는 건 항상 아래로
+      if(y==null)return -1;
+      return (x-y)*dir||a.i-b.i;
+    });
+  }
+  const body=rows.map(({r,i})=>{
     const t=r.remainMin!=null?`${Math.floor(r.remainMin/60)}시간 ${r.remainMin%60}분`:'-';
-    return `<tr class="item-row" data-i="${i}">
-      <td><span class="caret">▶</span>${esc(r.name)}${g}${per}${chips(r)}</td>
-      <td>${sfLabel(r)}</td>
-      <td class="price">${meso(r.priceTotal)}</td>
+    const cheap=st&&st.q1&&Number.isFinite(r.pricePerUnit)&&r.pricePerUnit<=st.q1;
+    const tot=r.priceTotal!=null&&r.priceTotal!==r.pricePerUnit
+      ? `<i class="sub">총 ${meso(r.priceTotal)}</i>`:'';
+    return `<tr class="item-row${cheap?' cheap-row':''}" data-i="${i}">
+      <td>${nameCell(r)}</td>
+      <td class="price">${meso(r.pricePerUnit??r.priceTotal)}${tot}</td>
       <td>${vsMedian(r,st)}</td>
-      <td>${r.qty>1?r.qty+'개':'1개'}</td>
-      <td>${r.zzim??'-'}</td>
+      <td>${sfLabel(r)}</td>
       <td>${t}</td>
     </tr>
-    <tr class="detail" data-d="${i}" hidden><td colspan="7">${detailHtml(r)}</td></tr>`;
+    <tr class="detail" data-d="${i}" hidden><td colspan="5">${detailHtml(r)}</td></tr>`;
   }).join('');
+  const th=(key,text,extra)=>{
+    if(!key)return `<th${extra||''}>${text}</th>`;
+    const on=sortState&&sortState.key===key;
+    return `<th${extra||''} class="sortable${on?' on':''}" data-sort="${key}">`
+      +`${text}<em>${on?(sortState.dir==='desc'?'▼':'▲'):'↕'}</em></th>`;
+  };
   $('resultWrap').innerHTML=statsCard(st)+`<table>
-    <thead><tr><th>아이템</th><th>스타포스</th><th>가격(총액)</th><th>시세 대비</th>
-      <th>수량</th><th>찜</th><th>남은 시간</th></tr></thead>
+    <thead><tr>${th(null,'아이템')}${th('per','개당 가격')}${th(null,'시세 대비')}
+      ${th('sf','★')}${th('remain','남은 시간')}</tr></thead>
     <tbody>${body}</tbody></table>`;
+  $('resultWrap').querySelectorAll('th.sortable').forEach(h=>{
+    h.onclick=()=>{
+      const k=h.dataset.sort;
+      // 같은 칼럼을 계속 누르면 오름차순 → 내림차순 → 정렬 해제
+      if(!sortState||sortState.key!==k)sortState={key:k,dir:'asc'};
+      else if(sortState.dir==='asc')sortState={key:k,dir:'desc'};
+      else sortState=null;
+      paint();
+    };
+  });
   $('resultWrap').querySelectorAll('tr.item-row').forEach(tr=>{
     tr.onclick=()=>{
-      const d=$('resultWrap').querySelector(`tr.detail[data-d="${tr.dataset.i}"]`);
-      const open=d.hidden;
-      d.hidden=!open;
+      const dt=$('resultWrap').querySelector(`tr.detail[data-d="${tr.dataset.i}"]`);
+      const open=dt.hidden;
+      dt.hidden=!open;
       tr.classList.toggle('open',open);
       tr.querySelector('.caret').textContent=open?'▼':'▶';
     };
   });
+}
+
+// 긴 옵션 문구를 목록에서 읽을 수 있는 길이로 줄임.
+// "보스 몬스터 공격 시 데미지 +40%" 처럼 그대로 늘어놓으면 세 줄이 화면을 다 먹어서,
+// 매물을 훑을 때 정작 중요한 숫자가 안 보임.
+const OPT_SHORT=[
+  [/보스\s*몬스터\s*공격\s*시\s*데미지/,'보공'],
+  [/몬스터\s*방어율\s*무시/,'방무'],
+  [/크리티컬\s*데미지/,'크뎀'],
+  [/크리티컬\s*확률/,'크확'],
+  [/아이템\s*드롭률/,'드롭'],
+  [/메소\s*획득량/,'메획'],
+  [/최대\s*HP/,'HP'], [/최대\s*MP/,'MP'],
+  [/모든\s*스탯/,'올스탯'],
+  [/공격력/,'공'], [/마력/,'마'],
+  [/방어력/,'방'], [/데미지/,'뎀'],
+  [/이동속도/,'이속'], [/점프력/,'점프'],
+  [/캐릭터\s*기준\s*9레벨\s*당\s*/,'9렙당 ']
+];
+function shortOpt(text){
+  let s=String(text||'').replace(/\s+/g,' ').trim();
+  for(const [re,to] of OPT_SHORT){ if(re.test(s)){ s=s.replace(re,to); break; } }
+  return s.replace(/\s*\+\s*/,' ').replace(/\s+/g,' ').trim();
+}
+function optSummary(label,list,cls){
+  if(!list||!list.length)return '';
+  return `<span class="osum ${cls}"><b>${label}</b>${list.map(shortOpt).map(esc).join(' · ')}</span>`;
+}
+
+function nameCell(r){
+  const g=[['잠재',r.potentialGrade],['에디',r.additionalGrade]]
+    .filter(([,v])=>v).map(([k,v])=>`<span class="grade g-${esc(v)}" title="${k}">${esc(v)}</span>`).join('');
+  // 잠재·에디 옵션은 매물을 고르는 핵심이라 접힌 상태에서도 한 줄로 보여줌
+  const opts=optSummary('잠',r.potential,'pot')+optSummary('에',r.additional,'add');
+  return `<span class="caret">▶</span><span class="iname">${esc(r.name)}</span>${g}`
+    +(opts?`<div class="osums">${opts}</div>`:'')
+    +chips(r);
 }
 
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -782,16 +879,16 @@ function sfLabel(r){
 }
 
 // 이름 아래 한 줄 요약 — 굳이 펼치지 않아도 눈에 들어와야 하는 것들
+// 접힌 상태에 남길 칩은 "고를 때 바로 필요한 것"만.
+// 스타포스는 전용 칼럼이 있고, 레벨·주문서 잔여 횟수는 펼치면 나오니 여기선 뺌.
 function chips(r){
   const c=[];
   if(r.isMyWorld===false)c.push('<span class="chip world">타 월드</span>');
-  if(r.starforce)c.push(`<span class="chip sf">★${r.starforce}${r.starforceMax?'/'+r.starforceMax:''}</span>`);
-  if(r.upgradeCount)c.push(`<span class="chip up">주문서 ${r.upgradeCount}회</span>`);
-  if(r.upgradeRemaining)c.push(`<span class="chip up">잔여 ${r.upgradeRemaining}회</span>`);
-  if(r.reqLevel)c.push(`<span class="chip">Lv.${r.reqLevel}</span>`);
+  if(r.qty>1)c.push(`<span class="chip">${r.qty}개 묶음</span>`);
+  if(r.upgradeCount)c.push(`<span class="chip up">주문서 ${r.upgradeCount}</span>`);
   if(typeof r.combatPower==='number'&&r.combatPower){
     const up=r.combatPower>0;
-    c.push(`<span class="chip ${up?'cp-up':'cp-down'}">전투력 ${up?'+':'-'}${Math.abs(r.combatPower).toLocaleString()}</span>`);
+    c.push(`<span class="chip ${up?'cp-up':'cp-down'}">전투력 ${up?'+':'−'}${Math.abs(r.combatPower).toLocaleString()}</span>`);
   }
   return c.length?`<div class="chips">${c.join('')}</div>`:'';
 }
