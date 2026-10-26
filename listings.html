@@ -366,10 +366,13 @@ const POT_OPTIONS=[
   ['hpRecovery','공격 시 HP 회복'],
   ['mpRecovery','공격 시 MP 회복'],
   ['hpRecoveryRate','HP 회복 아이템 및 스킬 효율 증가'],
-  ['strPerLevel','캐릭터 9레벨 당 STR 증가'],
-  ['dexPerLevel','캐릭터 9레벨 당 DEX 증가'],
-  ['intPerLevel','캐릭터 9레벨 당 INT 증가'],
-  ['lukPerLevel','캐릭터 9레벨 당 LUK 증가']
+  ['hasteSkill','<쓸만한 헤이스트> 스킬'],
+  ['mysticDoorSkill','<쓸만한 미스틱 도어> 스킬'],
+  ['sharpEyesSkill','<쓸만한 샤프 아이즈> 스킬'],
+  ['hyperBodySkill','<쓸만한 하이퍼 바디> 스킬'],
+  ['combatOrdersSkill','<쓸만한 컴뱃 오더스> 스킬'],
+  ['advancedBlessSkill','<쓸만한 어드밴스드 블레스> 스킬'],
+  ['windBoosterSkill','<쓸만한 윈드 부스터> 스킬']
 ];
 
 // 추가 옵션 (enhancementOption::additionalOption::optionRows)
@@ -382,11 +385,11 @@ const EX_OPTIONS=[
 ];
 
 // 주문서 강화 (enhancementOption::scrollUpgrade::optionRows)
+// 대소문자가 제각각인 건 옥션 표기 그대로임(maxHP/maxMP/PAD/MAD).
 const SCROLL_OPTIONS=[
-  ['totalStr','STR'],['totalDex','DEX'],['totalInt','INT'],['totalLuk','LUK'],
-  ['totalPhysicalAttack','공격력'],['totalMagicAttack','마력'],
-  ['totalMaxHp','최대 HP'],['totalMaxMp','최대 MP'],
-  ['totalJump','점프력'],['totalSpeed','이동속도']
+  ['str','STR'],['dex','DEX'],['int','INT'],['luk','LUK'],
+  ['maxHP','최대 HP'],['maxMP','최대 MP'],
+  ['PAD','공격력'],['MAD','마력']
 ];
 
 const JOB_CLASSES=[['','전체'],['warrior','전사'],['mage','마법사'],['archer','궁수'],['thief','도적'],['pirate','해적']];

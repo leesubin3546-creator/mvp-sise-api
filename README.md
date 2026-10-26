@@ -30,8 +30,29 @@
   빼는 게 전체 월드임. 이름만 보고 반대로 넣으면 옥션이 조용히 전체 월드를 돌려줌. 전체 월드로 검색하면
   타 월드 매물이 섞여 나오는데(구매 시 월드 이전 수수료가 붙음), 매물 표에 `타 월드` 칩으로 표시함.
 - `enhancementOption::` 키의 콜론은 인코딩하면 안 먹어서, 키는 그대로 두고 값만 인코딩함.
-- 옵션 코드는 `bossDamagePercent`, `ignoreMonsterDefense`, `criticalDamagePercent`, `strPercent` 등
-  32종을 `listings.html`의 `POT_OPTIONS`에 담아둠.
+- 옵션 코드는 추측하지 말 것. 옥션 필터 패널 콤보박스의 React props 에서 그대로 읽어옴:
+  잠재능력/에디셔널 39종(`POT_OPTIONS`), 추가 옵션 12종(`EX_OPTIONS`, `ex*`),
+  주문서 강화 8종(`SCROLL_OPTIONS`).
+
+### 파라미터 실측 결과 (2026-10-26)
+
+옥션은 모르는 파라미터를 **조용히 무시**해서, 틀려도 화면상 아무 일도 안 일어남. 그래서 전부 결과로 확인함.
+
+| 파라미터 | 결과 |
+|---|---|
+| `price::min` / `price::max` | ✅ |
+| `basicOption::jobClass` | ✅ |
+| `basicOption::levelMin` / `levelMax` | ✅ 단, **아이템 기본 레벨 기준**. 환생의 불꽃으로 착용 레벨이 내려간 매물은 툴팁에 175로 보여도 기본 200이라 레벨 200 필터에 잡힘 |
+| `enhancementOption::starforceMin` / `Max` | ✅ |
+| `enhancementOption::remainUpgradeCountMin` | ✅ |
+| `enhancementOption::additionalOption::optionRows` | ✅ **합산 기준** — "INT,LUK +36" 과 "INT +66" 이 더해져 102 로 잡힘 |
+| `enhancementOption::scrollUpgrade::optionRows` | ✅ (단 코드가 `total*` 이 아니라 `str`/`int`/`maxHP`/`PAD` 꼴) |
+| `enhancementOption::potentialFilters::isAddAll` | ✅ `true` 6,311건 / `false` 0건 (한 줄에 INT 18% 는 없으므로 정상) |
+| `isAllWorldSearchEnabled` | ✅ 이름과 뜻이 반대 (위 참고) |
+
+**조건이 너무 넓으면 0건이 나옴.** 분류만 걸고 검색하거나 레벨 1~300 같은 사실상 무조건을 걸면
+결과가 0으로 돌아옴 — 필터가 고장난 게 아니라 옥션이 그렇게 응답함. 뭔가 0건이면 조건을 *좁혀서* 가 아니라
+*조금 더 구체적으로* 바꿔서 확인할 것.
 
 ### 매물 상세 옵션은 어떻게 가져오나
 
