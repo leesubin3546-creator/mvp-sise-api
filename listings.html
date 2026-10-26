@@ -86,6 +86,12 @@
   .fchip x{cursor:pointer;font-size:12px;opacity:.55;font-style:normal}
   .fchip x:hover{opacity:1}
   .applied .none{font-size:11.5px;color:var(--sub)}
+  .bitem{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+    padding:5px 10px;border-radius:7px;background:#eee7d9;color:#6b5c47;cursor:pointer}
+  .bitem input{width:auto;margin:0;cursor:pointer}
+  tr.brow{cursor:pointer}
+  tr.brow:hover{background:#faf7f0}
+  td.none{color:var(--sub);text-align:center}
   /* 시세 요약 */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;
     margin:0 0 16px;padding:13px;background:#faf6ee;border:1px solid var(--line);border-radius:10px}
@@ -294,9 +300,24 @@
     </div>
   </div>
 
-  <!-- 2. 결과 -->
+  <!-- 2. 저장된 조건 일괄 조회 -->
   <div class="card">
-    <h2><span class="n">2</span> 매물 목록 <span id="resultMeta" style="font-size:12px;color:var(--sub);font-weight:400"></span></h2>
+    <h2><span class="n">2</span> 저장된 조건 일괄 조회</h2>
+    <div class="sub" style="margin:0 0 12px">
+      저장해둔 조건들을 한 번에 돌려서 시세만 먼저 비교해. 조건 하나당 검색 1회를 쓰고,
+      옥션 연속검색 제한 때문에 사이를 6초씩 띄워.
+    </div>
+    <div class="applied" id="batchList" style="margin-top:0"></div>
+    <div class="btnrow">
+      <button class="btn" id="batchRun" disabled>▶ 고른 조건 모두 검색</button>
+      <span id="batchCost" style="font-size:11.5px;color:var(--sub);align-self:center"></span>
+    </div>
+    <div id="batchResult" style="margin-top:14px"></div>
+  </div>
+
+  <!-- 3. 결과 -->
+  <div class="card">
+    <h2><span class="n">3</span> 매물 목록 <span id="resultMeta" style="font-size:12px;color:var(--sub);font-weight:400"></span></h2>
     <div id="resultWrap"><div class="empty">아직 검색 결과가 없어. 위에서 조건을 걸고 검색해줘.</div></div>
   </div>
 
@@ -568,7 +589,7 @@ $('savePresetBtn').onclick=()=>{
   if(!name)return;
   const ps=loadPresets(); ps.push({name,filters:readFilters()});
   try{localStorage.setItem(LS_PRESETS,JSON.stringify(ps));}catch(e){}
-  renderPresets(); setStatus(`"${name}" 조건을 저장했어.`);
+  renderPresets(); renderBatchPicker(); setStatus(`"${name}" 조건을 저장했어.`);
 };
 $('presetSel').onchange=e=>{
   const i=e.target.value; if(i==='')return;
@@ -578,7 +599,7 @@ $('delPresetBtn').onclick=()=>{
   const i=$('presetSel').value; if(i==='')return setStatus('삭제할 조건을 먼저 골라줘.');
   const ps=loadPresets(); const [rm]=ps.splice(i,1);
   try{localStorage.setItem(LS_PRESETS,JSON.stringify(ps));}catch(e){}
-  renderPresets(); setStatus(`"${rm.name}" 조건을 삭제했어.`);
+  renderPresets(); renderBatchPicker(); setStatus(`"${rm.name}" 조건을 삭제했어.`);
 };
 
 // 옥션 헤더에 뜨는 "검색 횟수 n/100" 을 유저스크립트가 같이 보고해줘서, 하루 예산을 보면서 쓸 수 있음
@@ -596,6 +617,7 @@ async function refreshUserscriptStatus(){
   try{ userscriptStatus=await (await fetch(AUCTION_BACKEND+'/api/userscript-ping')).json(); }
   catch(e){ userscriptStatus=null; }
   renderQuota();
+  if($('batchList'))updateBatchCost();
   const el=$('userscriptBanner');
   if(!userscriptStatus||userscriptStatus.ageMs!==null){el.style.display='none';return;}
   el.innerHTML=`⚠ <b>유저스크립트가 아직 한 번도 감지되지 않았어.</b> 검색해도 매물이 안 채워진다면
@@ -634,47 +656,156 @@ $('closeTabBtn').onclick=()=>{closeAuctionWin();setStatus('옥션 탭을 닫았�
 
 // ---- 검색 ----
 let searching=false;
+
+// 조건 하나를 실제로 검색해서 결과를 받아옴. 못 받으면 null.
+// 단건 검색과 프리셋 일괄 조회가 같은 경로를 쓰도록 떼어놨음.
+async function runSearch(f,label){
+  const url=buildAuctionUrl(f);
+  const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 여유
+  auctionWin=await openOrReuseTab(url);
+  const pages=Math.max(1,+f.sampleN||1);
+  const who=label?`[${label}] `:'';
+  setStatus(pages>1
+    ? `⏳ ${who}옥션 탭에서 검색 중... 시세 구간 ${pages}곳을 훑느라 조금 걸려 (검색 횟수는 1회만 소모).`
+    : `⏳ ${who}옥션 탭에서 검색 중... (결과 렌더링까지 몇 초 걸려)`);
+  await new Promise(r=>setTimeout(r,5000)); // 검색 결과가 그려질 때까지 대기
+  const started=Date.now();
+  const timeoutMs=15000+(pages-1)*6000; // 페이지 한 곳당 왕복 ~4초쯤 더 걸림
+  while(Date.now()-started<timeoutMs){
+    try{
+      const d=await (await fetch(AUCTION_BACKEND+'/api/auction-listings')).json();
+      if(d.found&&d.ts>=navigatedAt)return d;
+    }catch(e){}
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  return null;
+}
+
+function whyNoResult(){
+  if(!userscriptStatus||userscriptStatus.ageMs===null)
+    return '유저스크립트가 감지되지 않았어 — 설치와 옥션 로그인을 확인해줘.';
+  if(!userscriptStatus.seenRecently)
+    return '유저스크립트 반응이 최근에 없었어 — 옥션 탭 로그인이 풀렸는지 확인해줘.';
+  return '옥션 탭에서 결과가 떴는지 확인해줘.';
+}
+
 $('searchBtn').onclick=async()=>{
   if(searching){setStatus('⚠ 이미 검색이 진행 중이야.');return;}
   const f=readFilters();
   saveLast();
-  const url=buildAuctionUrl(f);
   searching=true; $('searchBtn').disabled=true;
   try{
     fetch(AUCTION_BACKEND+'/api/ping').catch(()=>{}); // 콜드스타트 미리 깨우기
     refreshUserscriptStatus();
-    const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 여유
-    auctionWin=await openOrReuseTab(url);
-    const pages=Math.max(1,+f.sampleN||1);
-    setStatus(pages>1
-      ? `⏳ 옥션 탭에서 검색 중... 시세 구간 ${pages}곳을 훑느라 조금 걸려 (검색 횟수는 1회만 소모).`
-      : '⏳ 옥션 탭에서 검색 중... (결과 렌더링까지 몇 초 걸려)');
-    await new Promise(r=>setTimeout(r,5000)); // 검색 결과가 그려질 때까지 대기
-    const started=Date.now();
-    // 페이지 한 곳당 왕복 ~4초쯤 더 걸림
-    const timeoutMs=15000+(pages-1)*6000;
-    let got=null;
-    while(Date.now()-started<timeoutMs){
-      try{
-        const d=await (await fetch(AUCTION_BACKEND+'/api/auction-listings')).json();
-        if(d.found&&d.ts>=navigatedAt){ got=d; break; }
-      }catch(e){}
-      await new Promise(r=>setTimeout(r,1000));
-    }
+    const got=await runSearch(f);
     if(got){
       render(got);
       const sp=got.sample&&got.sample.pages?` · ${got.sample.pages.length}구간 표본`:'';
       setStatus(`✅ ${got.rows.length}건 가져왔어 (옥션 전체 결과 ${got.total}건${sp}).`);
       refreshUserscriptStatus();
-    }
-    else{
-      let why='옥션 탭에서 결과가 떴는지 확인해줘.';
-      if(!userscriptStatus||userscriptStatus.ageMs===null) why='유저스크립트가 감지되지 않았어 — 설치와 옥션 로그인을 확인해줘.';
-      else if(!userscriptStatus.seenRecently) why='유저스크립트 반응이 최근에 없었어 — 옥션 탭 로그인이 풀렸는지 확인해줘.';
-      setStatus('⏱ 매물을 못 받았어. '+why);
-    }
+    }else setStatus('⏱ 매물을 못 받았어. '+whyNoResult());
   }finally{ searching=false; $('searchBtn').disabled=false; }
 };
+
+// ---- 저장된 조건 일괄 조회 ----
+// 옥션은 5초 연속검색 제한이 있어서 사이를 띄워야 하고, 하루 100회 예산을 먹으니
+// 몇 회 쓸 건지 먼저 보여주고 모자라면 아예 시작하지 않음.
+const BATCH_GAP_MS=6000;
+let batchResults=[];
+
+function renderBatchPicker(){
+  const ps=loadPresets();
+  const box=$('batchList');
+  if(!ps.length){
+    box.innerHTML='<div class="none">저장된 조건이 없어. 조건을 걸고 <b>이 조건 저장</b>으로 만들어줘.</div>';
+    $('batchRun').disabled=true;
+    $('batchCost').textContent='';
+    return;
+  }
+  box.innerHTML=ps.map((p,i)=>
+    `<label class="bitem"><input type="checkbox" value="${i}" checked>${esc(p.name)}</label>`).join('');
+  box.querySelectorAll('input').forEach(c=>c.onchange=updateBatchCost);
+  updateBatchCost();
+}
+function pickedPresets(){
+  return [...$('batchList').querySelectorAll('input:checked')].map(c=>+c.value);
+}
+function updateBatchCost(){
+  if(!$('batchList').querySelector('input'))return;
+  const n=pickedPresets().length;
+  const q=userscriptStatus&&userscriptStatus.quota;
+  const left=q?q.limit-q.used:null;
+  $('batchRun').disabled=!n||searching;
+  $('batchCost').innerHTML=n
+    ? `검색 <b>${n}회</b> 소모${left!=null?` · 남은 횟수 ${left}회`:''}`
+      +(left!=null&&n>left?' <b style="color:var(--warn)">— 예산이 모자라</b>':'')
+    : '조건을 하나 이상 골라줘.';
+}
+
+$('batchRun').onclick=async()=>{
+  if(searching){setStatus('⚠ 이미 검색이 진행 중이야.');return;}
+  const ps=loadPresets(), idx=pickedPresets();
+  if(!idx.length)return;
+  const q=userscriptStatus&&userscriptStatus.quota;
+  if(q&&idx.length>q.limit-q.used){
+    setStatus(`⚠ 남은 검색 횟수(${q.limit-q.used}회)보다 고른 조건(${idx.length}개)이 많아. 줄여서 다시 해줘.`);
+    return;
+  }
+  searching=true; $('batchRun').disabled=true; $('searchBtn').disabled=true;
+  batchResults=[];
+  try{
+    fetch(AUCTION_BACKEND+'/api/ping').catch(()=>{});
+    refreshUserscriptStatus();
+    for(let n=0;n<idx.length;n++){
+      const p=ps[idx[n]];
+      const got=await runSearch(p.filters,`${n+1}/${idx.length} ${p.name}`);
+      batchResults.push({name:p.name,filters:p.filters,data:got});
+      renderBatch();
+      // 옥션 5초 연속검색 제한 — 마지막 건 뒤에는 기다릴 필요 없음
+      if(n<idx.length-1){
+        setStatus(`⏳ 옥션 연속검색 제한 때문에 잠깐 쉬는 중... (${n+1}/${idx.length} 완료)`);
+        await new Promise(r=>setTimeout(r,BATCH_GAP_MS));
+      }
+    }
+    const okN=batchResults.filter(b=>b.data).length;
+    setStatus(okN===idx.length
+      ? `✅ 일괄 조회 끝 — ${okN}건 전부 가져왔어. 아래에서 조건을 누르면 매물 전체가 떠.`
+      : `⚠ 일괄 조회 끝 — ${okN}/${idx.length}건만 가져왔어. ${whyNoResult()}`);
+    refreshUserscriptStatus();
+  }finally{ searching=false; $('searchBtn').disabled=false; updateBatchCost(); }
+};
+
+function renderBatch(){
+  if(!batchResults.length){$('batchResult').innerHTML='';return;}
+  const body=batchResults.map((b,i)=>{
+    if(!b.data)return `<tr><td>${esc(b.name)}</td><td colspan="4" class="none">못 받았어</td></tr>`;
+    const st=priceStats(b.data);
+    const cheapest=(b.data.rows||[])
+      .filter(r=>Number.isFinite(r.pricePerUnit))
+      .reduce((a,r)=>!a||r.pricePerUnit<a.pricePerUnit?r:a,null);
+    return `<tr class="brow" data-b="${i}">
+      <td>${esc(b.name)}</td>
+      <td>${b.data.total.toLocaleString()}건</td>
+      <td class="price">${st?meso(st.min):'-'}</td>
+      <td>${st?meso(st.med):'-'}</td>
+      <td>${cheapest?esc(cheapest.name):'-'}</td>
+    </tr>`;
+  }).join('');
+  $('batchResult').innerHTML=`<table>
+    <thead><tr><th>저장된 조건</th><th>전체 매물</th><th>최저가</th><th>중앙값</th><th>최저가 매물</th></tr></thead>
+    <tbody>${body}</tbody></table>
+    <div class="hint" style="margin-top:8px">행을 누르면 그 조건의 매물 전체가 아래 <b>매물 목록</b>에 떠.</div>`;
+  $('batchResult').querySelectorAll('tr.brow').forEach(tr=>{
+    tr.onclick=()=>{
+      const b=batchResults[+tr.dataset.b];
+      if(!b.data)return;
+      applyFilters(b.filters); saveLast();
+      sortState=null; render(b.data);
+      setStatus(`"${b.name}" 결과를 펼쳤어.`);
+      $('resultWrap').scrollIntoView?.({behavior:'smooth',block:'start'});
+    };
+  });
+}
 
 // ---- 시세 통계 ----
 // 옥션 결과가 "개당 낮은 가격순"으로 정렬돼 있을 때, 유저스크립트가 분위수 자리의 페이지를
@@ -936,6 +1067,7 @@ $('addScroll').onclick=()=>{addOptRow('scrollRows');};
   if(last)applyFilters(last);
   if(!$('potRows').children.length)addOptRow('potRows');
   renderPresets();
+  renderBatchPicker();
   renderApplied();
   refreshUserscriptStatus();
 })();
