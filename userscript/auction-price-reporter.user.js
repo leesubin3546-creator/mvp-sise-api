@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MVP 계산기 - 메이플 옥션 시세 리포터
 // @namespace    mvp-mesocalc
-// @version      1.4.0
+// @version      1.5.0
 // @description  옥션(auction.maplestory.nexon.com) 구매/시세 검색 결과의 개당 최저가·최근 체결가와 매물 목록을 읽어서 MVP 계산기/매물 찾기 백엔드로 보고합니다. 로그인은 항상 사용자 본인 브라우저 세션을 그대로 사용하며, 이 스크립트가 로그인을 대신하거나 자격 증명을 저장/전송하지 않습니다.
 // @author       -
 // @match        https://auction.maplestory.nexon.com/buy*
@@ -24,16 +24,29 @@
   const requested = new URLSearchParams(location.search).get('mvpcalcBackend');
   const BACKEND = ALLOWED_BACKENDS.includes(requested) ? requested : ALLOWED_BACKENDS[0];
 
+  // 헤더의 "검색 횟수 12 / 100" 을 읽음. 하루 예산이 얼마나 남았는지 계산기 쪽에서 보여주려고.
+  function readSearchQuota() {
+    const m = (document.body.innerText || '').match(/검색\s*횟수\s*([\d,]+)\s*\/\s*([\d,]+)/);
+    if (!m) return null;
+    const used = parseInt(m[1].replace(/,/g, ''), 10);
+    const limit = parseInt(m[2].replace(/,/g, ''), 10);
+    return Number.isFinite(used) && Number.isFinite(limit) ? { used, limit } : null;
+  }
+
   // 이 페이지를 봤다는 것 자체를 백엔드에 알림(설치/동작 여부 진단용).
   // 아이템 검색 결과가 없어도, 콜드스타트 중이어도 항상 시도함.
-  function pingBackendAlive() {
+  function pingBackendAlive(quota) {
     GM_xmlhttpRequest({
       method: 'POST',
       url: BACKEND + '/api/userscript-ping',
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify({ quota: quota || null }),
       onload: () => {}, onerror: () => {}
     });
   }
   pingBackendAlive();
+  // 숫자는 화면이 그려진 뒤에나 읽히므로 조금 뒤에 한 번 더
+  setTimeout(() => { const q = readSearchQuota(); if (q) pingBackendAlive(q); }, 2500);
 
   const params = new URLSearchParams(location.search);
   const keyword = (params.get('keyword') || '').trim();
@@ -190,13 +203,20 @@
     return parseListingRowsDom();
   }
 
-  function reportListings(rows, attempt) {
+  function readTotal() {
+    const m = (document.body.innerText || '').match(/검색\s*결과\s*([\d,]+)\s*건/);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+  }
+
+  function reportListings(rows, attempt, sample) {
     attempt = attempt || 0;
-    const totalM = (document.body.innerText || '').match(/검색\s*결과\s*([\d,]+)\s*건/);
+    const total = readTotal();
     const body = JSON.stringify({
       rows,
-      total: totalM ? parseInt(totalM[1].replace(/,/g, ''), 10) : rows.length,
-      url: location.href
+      total: total == null ? rows.length : total,
+      url: location.href,
+      sample: sample || null,
+      quota: readSearchQuota()
     });
     GM_xmlhttpRequest({
       method: 'POST',
@@ -207,13 +227,91 @@
         if (resp.status >= 200 && resp.status < 300) {
           toast(`매물 찾기로 전송됨: ${rows.length}건`);
         } else if (attempt < 4) {
-          setTimeout(() => reportListings(rows, attempt + 1), 3000);
+          setTimeout(() => reportListings(rows, attempt + 1, sample), 3000);
         }
       },
       onerror: () => {
-        if (attempt < 4) setTimeout(() => reportListings(rows, attempt + 1), 3000);
+        if (attempt < 4) setTimeout(() => reportListings(rows, attempt + 1, sample), 3000);
       }
     });
+  }
+
+  // ---- 여러 페이지 표본 수집 ----
+  // 페이지 넘기기는 검색 횟수를 소모하지 않음(buySearchKey가 유지되는 한 같은 검색으로 취급).
+  // 실제로 확인: 1회 검색 뒤 5페이지·90페이지까지 넘겨도 "검색 횟수 1/100" 그대로였음.
+  // 그래서 "개당 낮은 가격순"으로 정렬된 결과에서 분위수 자리의 페이지만 콕 집어 읽으면,
+  // 검색 1회로 전체 시세 분포를 알 수 있음. 1페이지만 보면 제일 싼 꼬리만 보게 됨
+  // (예: 1페이지 1,499만 / 마지막 페이지 5,500억).
+  const SAMPLE_KEY = '__mvpcalc_sample';
+
+  function samplePages(total, limit, want) {
+    const pages = Math.max(1, Math.ceil(total / limit));
+    // 분위수 r번째 매물이 있는 페이지. 균등 분위(0, 1/(n-1), ... 1)로 want개.
+    const qs = want <= 1 ? [0] : [...Array(want)].map((_, i) => i / (want - 1));
+    const set = new Set(qs.map(q => {
+      const rank = Math.max(1, Math.ceil(q * total));
+      return Math.min(pages, Math.ceil(rank / limit));
+    }));
+    return [...set].sort((a, b) => a - b);
+  }
+
+  function loadSampleState() {
+    try { return JSON.parse(sessionStorage.getItem(SAMPLE_KEY)); } catch (e) { return null; }
+  }
+  function saveSampleState(s) {
+    try { sessionStorage.setItem(SAMPLE_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  function clearSampleState() {
+    try { sessionStorage.removeItem(SAMPLE_KEY); } catch (e) {}
+  }
+
+  function gotoPage(page) {
+    const u = new URL(location.href);
+    u.searchParams.set('page', String(page));
+    // buySearchKey를 그대로 들고 가야 같은 검색으로 취급되어 횟수가 안 깎임
+    location.href = u.toString();
+  }
+
+  // 표본 수집을 한 걸음 진행. 끝났으면 true 를 돌려줌(= 보고까지 마침).
+  function stepSampling(rows) {
+    const wantPages = parseInt(params.get('mvpcalcSample') || '1', 10);
+    if (!(wantPages > 1)) return false;          // 표본 수집 모드가 아님
+    if (!params.get('buySearchKey')) return false; // 키가 없으면 페이지 이동이 재검색이 됨
+
+    const limit = parseInt(params.get('limit') || '20', 10);
+    const page = parseInt(params.get('page') || '1', 10);
+    const total = readTotal();
+    let st = loadSampleState();
+
+    // 이 검색에 대한 수집이 아직 없으면 계획부터 세움
+    if (!st || st.key !== params.get('buySearchKey')) {
+      if (total == null) return false;
+      st = {
+        key: params.get('buySearchKey'),
+        limit, total,
+        plan: samplePages(total, limit, wantPages),
+        done: [],
+        rows: []
+      };
+    }
+
+    st.rows = st.rows.concat(rows.map(r => Object.assign({ _page: page }, r)));
+    if (!st.done.includes(page)) st.done.push(page);
+
+    const next = st.plan.find(p => !st.done.includes(p));
+    if (next != null) {
+      saveSampleState(st);
+      toast(`시세 표본 수집 중… ${st.done.length}/${st.plan.length}페이지 (검색 횟수는 안 깎여)`);
+      setTimeout(() => gotoPage(next), 600);
+      return true;
+    }
+
+    clearSampleState();
+    reportListings(st.rows, 0, {
+      pages: st.plan, limit: st.limit, total: st.total,
+      sortType: params.get('sortType') || null
+    });
+    return true;
   }
 
   // 백엔드가 막 깨어나는 중일 수 있어 실패하면 몇 번 재시도(최대 4번, ~12초)
@@ -259,7 +357,10 @@
   // 두 가지를 독립적으로 보고함:
   //  - 개당 최저가 1건 (계산기용) — 검색어가 있을 때만
   //  - 매물 목록 전체 (매물 찾기용) — /buy 페이지면 검색어 없이 필터만으로도
-  let priceDone = !keyword;
+  // 표본 수집으로 2페이지 이상을 넘길 때는 개당 최저가를 보고하면 안 됨 —
+  // 그 페이지 맨 위는 최저가가 아니라 중간값쯤이라 계산기 판매가가 엉뚱해짐.
+  const onFirstPage = (params.get('page') || '1') === '1';
+  let priceDone = !keyword || !onFirstPage;
   let listDone = kind !== 'buy';
   let tries = 0;
   const maxTries = 20; // 500ms * 20 = 10초
@@ -271,14 +372,22 @@
     }
     if (!listDone) {
       const rows = parseListingRows();
-      if (rows.length) { listDone = true; reportListings(rows); }
+      if (rows.length) {
+        listDone = true;
+        // 표본 수집 모드면 다음 페이지로 넘어가거나(아직 남음) 모아둔 걸 한 번에 보고함
+        if (!stepSampling(rows)) reportListings(rows);
+      }
     }
     if ((priceDone && listDone) || tries >= maxTries) {
       clearInterval(timer);
-      // 결과가 0건이어도 "검색은 끝났다"고 알려야 매물 찾기 쪽이 무한 대기하지 않음
-      if (tries >= maxTries && !listDone && kind === 'buy'
-          && /일치하는 아이템이 없습니다/.test(document.body.innerText || '')) {
-        reportListings([]);
+      if (tries >= maxTries && !listDone && kind === 'buy') {
+        // 표본 수집 중이라면 이 페이지가 비어 있어도(매물이 그새 팔렸거나 만료) 멈추면 안 됨 —
+        // 빈 손으로 다음 구간으로 넘어가거나, 마지막이면 모아둔 걸 보고함
+        if (!stepSampling([])
+            // 결과가 0건이어도 "검색은 끝났다"고 알려야 매물 찾기 쪽이 무한 대기하지 않음
+            && /일치하는 아이템이 없습니다/.test(document.body.innerText || '')) {
+          reportListings([]);
+        }
       }
     }
   }, 500);

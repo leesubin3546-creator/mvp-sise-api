@@ -87,13 +87,20 @@ let lastUserscriptSeen = 0;
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // 유저스크립트가 살아있는지(설치/동작 여부) 진단용. 매 페이지 로드마다 유저스크립트가 호출.
+// 옥션 헤더의 "검색 횟수 n/100". 유저스크립트가 옥션 페이지를 볼 때마다 같이 보고함.
+let lastQuota = null; // { used, limit, ts }
+
 app.post('/api/userscript-ping', (req, res) => {
   lastUserscriptSeen = Date.now();
+  const q = req.body && req.body.quota;
+  if (q && Number.isFinite(q.used) && Number.isFinite(q.limit)) {
+    lastQuota = { used: q.used, limit: q.limit, ts: Date.now() };
+  }
   res.json({ ok: true });
 });
 app.get('/api/userscript-ping', (req, res) => {
   const ageMs = lastUserscriptSeen ? Date.now() - lastUserscriptSeen : null;
-  res.json({ seenRecently: ageMs !== null && ageMs < 5 * 60 * 1000, ageMs });
+  res.json({ seenRecently: ageMs !== null && ageMs < 5 * 60 * 1000, ageMs, quota: lastQuota });
 });
 
 app.post('/api/auction-price', (req, res) => {
@@ -114,12 +121,17 @@ app.post('/api/auction-price', (req, res) => {
 let lastListings = null; // { rows:[...], total, url, ts }
 
 app.post('/api/auction-listings', (req, res) => {
-  const { rows, total, url } = req.body || {};
+  const { rows, total, url, sample, quota } = req.body || {};
   if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows 배열 필요' });
+  if (quota && Number.isFinite(quota.used) && Number.isFinite(quota.limit)) {
+    lastQuota = { used: quota.used, limit: quota.limit, ts: Date.now() };
+  }
   lastListings = {
-    rows: rows.slice(0, 100),
+    // 여러 페이지를 훑어온 표본이라 100건으로는 부족함
+    rows: rows.slice(0, 1000),
     total: Number.isFinite(total) ? total : rows.length,
     url: url || null,
+    sample: sample || null, // { pages:[1,23,45,…], limit, total, sortType }
     ts: Date.now()
   };
   res.json({ ok: true, count: lastListings.rows.length });

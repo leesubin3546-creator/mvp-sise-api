@@ -86,6 +86,19 @@
   .fchip x{cursor:pointer;font-size:12px;opacity:.55;font-style:normal}
   .fchip x:hover{opacity:1}
   .applied .none{font-size:11.5px;color:var(--sub)}
+  /* 시세 요약 */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;
+    margin:0 0 16px;padding:13px;background:#faf6ee;border:1px solid var(--line);border-radius:10px}
+  .stat{text-align:center}
+  .stat b{display:block;font-size:10.5px;color:var(--sub);font-weight:700;margin-bottom:3px}
+  .stat span{display:block;font-size:14px;font-weight:700;color:var(--accent-d)}
+  .stat i{display:block;font-size:10px;color:var(--sub);font-style:normal;margin-top:2px}
+  .stats-note{grid-column:1/-1;font-size:11.5px;color:var(--sub);line-height:1.65;
+    border-top:1px solid var(--line);padding-top:9px;margin-top:3px}
+  .vs{font-size:12px;font-weight:700;color:var(--sub)}
+  .vs.deal{color:#2f7a3f}
+  .vs.cheap{color:#4d8257}
+  .vs.high{color:#a8603f}
   .chip.cp-up{background:#e4f1e2;color:#3f6b39}
   .chip.cp-down{background:#f6e3e3;color:#8c4040}
   tr.detail>td{background:#fbf8f2;padding:0;border-bottom:1px solid var(--line)}
@@ -195,6 +208,14 @@
           <option value="60">60개</option>
         </select>
       </div>
+      <div class="col" style="max-width:210px">
+        <label>시세 표본 <span style="font-weight:500;color:var(--sub)">(검색 횟수 추가 소모 없음)</span></label>
+        <select id="sampleN">
+          <option value="1">1페이지만 (제일 싼 쪽만)</option>
+          <option value="5" selected>5구간 — 최저/25%/중앙/75%/최고</option>
+          <option value="9">9구간 — 더 촘촘히 (느림)</option>
+        </select>
+      </div>
       <div class="col" style="max-width:190px">
         <label>월드</label>
         <select id="worldScope">
@@ -239,8 +260,9 @@
     <div class="applied" id="appliedWrap">
       <span class="applied-label">지금 걸린 조건</span>
       <span id="appliedChips"></span>
+      <span id="quota" style="margin-left:auto;font-size:11.5px;color:var(--sub)"></span>
       <button type="button" class="btn ghost" id="resetAllBtn"
-        style="padding:5px 10px;font-size:11.5px;margin-left:auto">↺ 조건 전체 초기화</button>
+        style="padding:5px 10px;font-size:11.5px">↺ 조건 전체 초기화</button>
     </div>
 
     <div class="btnrow">
@@ -420,6 +442,9 @@ function buildAuctionUrl(f){
   // 유저스크립트가 어느 백엔드로 보고할지 알려줌(로컬 개발 시 localhost로 받기 위함).
   // 옥션은 모르는 파라미터를 무시하고, 유저스크립트는 허용 목록에 있는 주소만 받아들임.
   p.push('mvpcalcBackend='+encodeURIComponent(AUCTION_BACKEND));
+  // 유저스크립트가 분위수 자리의 페이지를 몇 군데 훑고 올지. 페이지 넘기기는 검색 횟수를
+  // 안 깎는 게 확인돼서(buySearchKey 유지), 1회 검색으로 전체 분포를 볼 수 있음.
+  if(+f.sampleN>1)p.push('mvpcalcSample='+(+f.sampleN));
   return 'https://auction.maplestory.nexon.com/buy?'+p.join('&');
 }
 function readFilters(){
@@ -434,7 +459,7 @@ function readFilters(){
     sfMin:$('sfMin').value, sfMax:$('sfMax').value,
     potGrade:$('potGrade').value, addGrade:$('addGrade').value,
     sortType:$('sortType').value, limit:$('limit').value,
-    worldScope:$('worldScope').value,
+    worldScope:$('worldScope').value, sampleN:$('sampleN').value,
     potAddAll:$('potAddAll').checked, addAddAll:$('addAddAll').checked,
     upgradeMin:$('upgradeMin').value, upgradeMax:$('upgradeMax').value,
     potRows:readOptRows('potRows'), addRows:readOptRows('addRows'),
@@ -455,6 +480,7 @@ function applyFilters(f){
   $('sortType').value=f.sortType||'PRICE_PER_ITEM_ASC';
   $('limit').value=f.limit||'20';
   $('worldScope').value=f.worldScope||'all';
+  $('sampleN').value=f.sampleN||'5';
   $('potAddAll').checked=f.potAddAll!==false;
   $('addAddAll').checked=f.addAddAll!==false;
   $('upgradeMin').value=f.upgradeMin||''; $('upgradeMax').value=f.upgradeMax||'';
@@ -471,7 +497,8 @@ function applyFilters(f){
 const GRADE_LABEL={legendary:'레전드리',unique:'유니크',epic:'에픽',rare:'레어',normal:'노멀'};
 const DEFAULTS={keyword:'',exact:'false',category:'ARMOR',minPrice:'',maxPrice:'',
   levelMin:'',levelMax:'',jobClass:'',sfMin:'',sfMax:'',potGrade:'',addGrade:'',
-  sortType:'PRICE_PER_ITEM_ASC',limit:'20',worldScope:'all',upgradeMin:'',upgradeMax:''};
+  sortType:'PRICE_PER_ITEM_ASC',limit:'20',worldScope:'all',sampleN:'5',
+  upgradeMin:'',upgradeMax:''};
 
 function activeChips(){
   const f=readFilters(), out=[];
@@ -540,11 +567,21 @@ $('delPresetBtn').onclick=()=>{
   renderPresets(); setStatus(`"${rm.name}" 조건을 삭제했어.`);
 };
 
+// 옥션 헤더에 뜨는 "검색 횟수 n/100" 을 유저스크립트가 같이 보고해줘서, 하루 예산을 보면서 쓸 수 있음
+function renderQuota(){
+  const q=userscriptStatus&&userscriptStatus.quota;
+  const el=$('quota');
+  if(!q){el.textContent='';return;}
+  const left=q.limit-q.used;
+  el.innerHTML=`오늘 검색 <b>${q.used}/${q.limit}</b> · 남은 횟수 <b style="color:${left<=10?'var(--warn)':'inherit'}">${left}회</b>`;
+}
+
 // ---- 유저스크립트 감지 안내 (설치 안 돼 있으면 검색해도 결과를 못 읽음) ----
 let userscriptStatus=null, autoPromptShown=false;
 async function refreshUserscriptStatus(){
   try{ userscriptStatus=await (await fetch(AUCTION_BACKEND+'/api/userscript-ping')).json(); }
   catch(e){ userscriptStatus=null; }
+  renderQuota();
   const el=$('userscriptBanner');
   if(!userscriptStatus||userscriptStatus.ageMs!==null){el.style.display='none';return;}
   el.innerHTML=`⚠ <b>유저스크립트가 아직 한 번도 감지되지 않았어.</b> 검색해도 매물이 안 채워진다면
@@ -587,10 +624,14 @@ $('searchBtn').onclick=async()=>{
     refreshUserscriptStatus();
     const navigatedAt=Date.now()-2000; // 서버-클라 시계 오차 여유
     auctionWin=openOrReuseTab(url);
-    setStatus('⏳ 옥션 탭에서 검색 중... (결과 렌더링까지 몇 초 걸려)');
+    const pages=Math.max(1,+f.sampleN||1);
+    setStatus(pages>1
+      ? `⏳ 옥션 탭에서 검색 중... 시세 구간 ${pages}곳을 훑느라 조금 걸려 (검색 횟수는 1회만 소모).`
+      : '⏳ 옥션 탭에서 검색 중... (결과 렌더링까지 몇 초 걸려)');
     await new Promise(r=>setTimeout(r,5000)); // 검색 결과가 그려질 때까지 대기
     const started=Date.now();
-    const timeoutMs=15000;
+    // 페이지 한 곳당 왕복 ~4초쯤 더 걸림
+    const timeoutMs=15000+(pages-1)*6000;
     let got=null;
     while(Date.now()-started<timeoutMs){
       try{
@@ -599,7 +640,12 @@ $('searchBtn').onclick=async()=>{
       }catch(e){}
       await new Promise(r=>setTimeout(r,1000));
     }
-    if(got){ render(got); setStatus(`✅ ${got.rows.length}건 가져왔어 (옥션 전체 결과 ${got.total}건).`); }
+    if(got){
+      render(got);
+      const sp=got.sample&&got.sample.pages?` · ${got.sample.pages.length}구간 표본`:'';
+      setStatus(`✅ ${got.rows.length}건 가져왔어 (옥션 전체 결과 ${got.total}건${sp}).`);
+      refreshUserscriptStatus();
+    }
     else{
       let why='옥션 탭에서 결과가 떴는지 확인해줘.';
       if(!userscriptStatus||userscriptStatus.ageMs===null) why='유저스크립트가 감지되지 않았어 — 설치와 옥션 로그인을 확인해줘.';
@@ -608,6 +654,65 @@ $('searchBtn').onclick=async()=>{
     }
   }finally{ searching=false; $('searchBtn').disabled=false; }
 };
+
+// ---- 시세 통계 ----
+// 옥션 결과가 "개당 낮은 가격순"으로 정렬돼 있을 때, 유저스크립트가 분위수 자리의 페이지를
+// 콕 집어 읽어오므로 중앙값·사분위는 추정이 아니라 전체 n건 중 정확한 순위의 값임.
+// 정렬이 다르면 순위와 가격 순서가 어긋나서, 가져온 표본 안에서만 계산하고 "표본 기준"으로 표시.
+function pctl(sorted,q){
+  if(!sorted.length)return null;
+  const i=(sorted.length-1)*q, lo=Math.floor(i), hi=Math.ceil(i);
+  return Math.round(sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo));
+}
+function priceStats(d){
+  const rows=(d.rows||[]).filter(r=>Number.isFinite(r.pricePerUnit)&&r.pricePerUnit>0);
+  if(!rows.length)return null;
+  const s=d.sample;
+  const vals=rows.map(r=>r.pricePerUnit);
+  const sorted=[...vals].sort((a,b)=>a-b);
+  const stats={
+    n:vals.length, total:d.total, exact:false,
+    min:sorted[0], max:sorted[sorted.length-1],
+    mean:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length),
+    q1:pctl(sorted,.25), med:pctl(sorted,.5), q3:pctl(sorted,.75),
+    pages:s&&s.pages?s.pages.length:1
+  };
+  const rankable=s&&s.sortType==='PRICE_PER_ITEM_ASC'&&s.limit>0&&s.total>0
+    &&rows.some(r=>Number.isFinite(r._page));
+  if(!rankable)return stats;
+  const byPage={};
+  rows.forEach(r=>{(byPage[r._page]=byPage[r._page]||[]).push(r);});
+  const ranked=[];
+  Object.keys(byPage).forEach(p=>byPage[p].forEach((r,i)=>
+    ranked.push({rank:(+p-1)*s.limit+i+1, v:r.pricePerUnit})));
+  ranked.sort((a,b)=>a.rank-b.rank);
+  const at=q=>{
+    const target=Math.max(1,Math.ceil(q*s.total));
+    return ranked.reduce((best,x)=>
+      Math.abs(x.rank-target)<Math.abs(best.rank-target)?x:best, ranked[0]).v;
+  };
+  stats.exact=true;
+  stats.min=ranked[0].v;
+  stats.max=ranked[ranked.length-1].v;
+  stats.q1=at(.25); stats.med=at(.5); stats.q3=at(.75);
+  return stats;
+}
+
+function statsCard(st){
+  if(!st)return '';
+  const cell=(k,v,sub)=>`<div class="stat"><b>${k}</b><span>${meso(v)}</span>${sub?`<i>${sub}</i>`:''}</div>`;
+  const note=st.exact
+    ? `전체 ${st.total.toLocaleString()}건을 ${st.pages}구간으로 훑어서 잡은 <b>정확한 순위값</b>이야 (검색 1회).`
+    : `가져온 ${st.n}건 표본 안에서만 계산한 값이야 — 개당 낮은 가격순으로 정렬해야 전체 기준이 나와.`;
+  return `<div class="stats">
+    ${cell('최저가',st.min)}
+    ${cell('하위 25%',st.q1,'이 아래면 싼 편')}
+    ${cell('중앙값',st.med,'시세 기준')}
+    ${cell('상위 25%',st.q3)}
+    ${cell('최고가',st.max)}
+    <div class="stats-note">${note} 평균은 ${meso(st.mean)}인데, 끝자락 호가가 끌어올려서 중앙값을 보는 게 나아.</div>
+  </div>`;
+}
 
 // ---- 결과 표시 ----
 function render(d){
@@ -626,6 +731,7 @@ function render(d){
       </div>`;
     return;
   }
+  const st=priceStats(d);
   const body=rows.map((r,i)=>{
     const g=[r.potentialGrade,r.additionalGrade].filter(Boolean)
       .map(x=>`<span class="grade g-${esc(x)}">${esc(x)}</span>`).join('');
@@ -635,14 +741,16 @@ function render(d){
       <td><span class="caret">▶</span>${esc(r.name)}${g}${per}${chips(r)}</td>
       <td>${sfLabel(r)}</td>
       <td class="price">${meso(r.priceTotal)}</td>
+      <td>${vsMedian(r,st)}</td>
       <td>${r.qty>1?r.qty+'개':'1개'}</td>
       <td>${r.zzim??'-'}</td>
       <td>${t}</td>
     </tr>
-    <tr class="detail" data-d="${i}" hidden><td colspan="6">${detailHtml(r)}</td></tr>`;
+    <tr class="detail" data-d="${i}" hidden><td colspan="7">${detailHtml(r)}</td></tr>`;
   }).join('');
-  $('resultWrap').innerHTML=`<table>
-    <thead><tr><th>아이템</th><th>스타포스</th><th>가격(총액)</th><th>수량</th><th>찜</th><th>남은 시간</th></tr></thead>
+  $('resultWrap').innerHTML=statsCard(st)+`<table>
+    <thead><tr><th>아이템</th><th>스타포스</th><th>가격(총액)</th><th>시세 대비</th>
+      <th>수량</th><th>찜</th><th>남은 시간</th></tr></thead>
     <tbody>${body}</tbody></table>`;
   $('resultWrap').querySelectorAll('tr.item-row').forEach(tr=>{
     tr.onclick=()=>{
@@ -656,6 +764,16 @@ function render(d){
 }
 
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// 중앙값 대비 몇 % 싼지/비싼지. 목록을 훑을 때 절대 가격보다 이게 눈에 더 잘 들어옴.
+function vsMedian(r,st){
+  if(!st||!st.med||!Number.isFinite(r.pricePerUnit))return '-';
+  const pct=Math.round((r.pricePerUnit/st.med-1)*100);
+  if(pct<=-30)return `<span class="vs deal">−${-pct}%</span>`;
+  if(pct<0)return `<span class="vs cheap">−${-pct}%</span>`;
+  if(pct===0)return '<span class="vs">시세</span>';
+  return `<span class="vs high">+${pct}%</span>`;
+}
 
 // 스타포스 칸: 17 ★ 같은 표기. 옛 유저스크립트가 보낸 매물은 값 자체가 없음.
 function sfLabel(r){
@@ -711,7 +829,7 @@ $('addAdd').onclick=()=>{addOptRow('addRows');};
 $('addEx').onclick=()=>{addOptRow('exRows');};
 $('addScroll').onclick=()=>{addOptRow('scrollRows');};
 ['keyword','exact','category','minPrice','maxPrice','levelMin','levelMax','jobClass',
- 'sfMin','sfMax','potGrade','addGrade','sortType','limit','worldScope','upgradeMin','upgradeMax',
+ 'sfMin','sfMax','potGrade','addGrade','sortType','limit','worldScope','sampleN','upgradeMin','upgradeMax',
  'potAddAll','addAddAll']
   .forEach(id=>$(id).addEventListener('input',saveLast));
 (function init(){
