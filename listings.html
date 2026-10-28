@@ -342,6 +342,17 @@
       옥션 연속검색 제한 때문에 사이를 6초씩 띄워.
     </div>
     <div class="applied" id="batchList" style="margin-top:0"></div>
+    <div class="row" style="margin-top:12px">
+      <div class="col" style="max-width:230px">
+        <label for="batchWorldScope">일괄 검색 월드 범위</label>
+        <select id="batchWorldScope">
+          <option value="saved">저장된 조건대로</option>
+          <option value="mine">현재 월드만</option>
+          <option value="all">전체 월드</option>
+        </select>
+      </div>
+      <div class="hint" style="align-self:center;margin:0">여기서 고른 범위를 모든 조건에 적용해. 저장된 조건은 바뀌지 않아.</div>
+    </div>
     <div class="btnrow">
       <button class="btn" id="batchRun" disabled>▶ 고른 조건 모두 검색</button>
       <span id="batchCost" style="font-size:11.5px;color:var(--sub);align-self:center"></span>
@@ -399,6 +410,7 @@ const AUCTION_BACKEND=location.origin;
 const TAMPERMONKEY_URL='https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo';
 const LS_PRESETS='mvpListings.presets.v1';
 const LS_LAST='mvpListings.last.v1';
+const LS_BATCH_WORLD='mvpListings.batchWorldScope.v1';
 
 // 옥션 잠재/에디 옵션 코드 (번들에서 추출한 실제 값)
 const POT_OPTIONS=[
@@ -807,6 +819,15 @@ $('searchBtn').onclick=async()=>{
 const BATCH_GAP_MS=6000;
 let batchResults=[];
 
+function makeBatchSearchFilters(saved,worldMode){
+  return {
+    ...saved,
+    // 일괄 조회의 앞 5건이 전체 최저가 1~5위가 되도록 검색 자체를 가격 오름차순으로 실행.
+    sortType:'PRICE_PER_ITEM_ASC',
+    worldScope:worldMode==='saved'?(saved.worldScope||'all'):worldMode
+  };
+}
+
 function renderBatchPicker(){
   const ps=loadPresets();
   const box=$('batchList');
@@ -845,16 +866,16 @@ $('batchRun').onclick=async()=>{
     setStatus(`⚠ 남은 검색 횟수(${q.limit-q.used}회)보다 고른 조건(${idx.length}개)이 많아. 줄여서 다시 해줘.`);
     return;
   }
+  const worldMode=$('batchWorldScope').value;
   searching=true; $('batchRun').disabled=true; $('searchBtn').disabled=true;
+  $('batchWorldScope').disabled=true;
   batchResults=[];
   try{
     fetch(AUCTION_BACKEND+'/api/ping').catch(()=>{});
     refreshUserscriptStatus();
     for(let n=0;n<idx.length;n++){
       const p=ps[idx[n]];
-      // 일괄 조회의 목적은 시세/최저가 비교이므로 저장 당시 정렬과 무관하게 가격 오름차순으로 검색.
-      // 그래야 첫 페이지의 앞 5건이 실제 전체 매물 중 최저가 1~5위가 됨.
-      const searchFilters={...p.filters,sortType:'PRICE_PER_ITEM_ASC'};
+      const searchFilters=makeBatchSearchFilters(p.filters,worldMode);
       const got=await runSearch(searchFilters,`${n+1}/${idx.length} ${p.name}`);
       batchResults.push({name:p.name,filters:searchFilters,data:got});
       renderBatch();
@@ -866,16 +887,18 @@ $('batchRun').onclick=async()=>{
     }
     const okN=batchResults.filter(b=>b.data).length;
     setStatus(okN===idx.length
-      ? `✅ 일괄 조회 끝 — ${okN}건 전부 가져왔어. 아래에서 조건을 누르면 매물 전체가 떠.`
+      ? `✅ 일괄 조회 끝 — ${okN}건 전부 가져왔어. 최저가 매물 버튼으로 상세를 확인해줘.`
       : `⚠ 일괄 조회 끝 — ${okN}/${idx.length}건만 가져왔어. ${whyNoResult()}`);
     refreshUserscriptStatus();
-  }finally{ searching=false; $('searchBtn').disabled=false; updateBatchCost(); }
+  }finally{ searching=false; $('searchBtn').disabled=false;
+    $('batchWorldScope').disabled=false; updateBatchCost(); }
 };
 
 function renderBatch(){
   if(!batchResults.length){$('batchResult').innerHTML='';return;}
   const body=batchResults.map((b,i)=>{
-    if(!b.data)return `<tr><td>${esc(b.name)}</td><td colspan="4" class="none">못 받았어</td></tr>`;
+    const worldLabel=b.filters.worldScope==='mine'?'현재 월드만':'전체 월드';
+    if(!b.data)return `<tr><td>${esc(b.name)} <span class="chip world">${worldLabel}</span></td><td colspan="4" class="none">못 받았어</td></tr>`;
     const st=priceStats(b.data);
     const cheapest=(b.data.rows||[])
       .filter(r=>Number.isFinite(r.pricePerUnit))
@@ -883,7 +906,7 @@ function renderBatch(){
       .slice(0,5);
     b._cheapest=cheapest;
     return `<tr class="brow" data-b="${i}">
-      <td>${esc(b.name)}</td>
+      <td>${esc(b.name)} <span class="chip world">${worldLabel}</span></td>
       <td>${b.data.total.toLocaleString()}건</td>
       <td class="price">${st?meso(st.min):'-'}</td>
       <td>${st?meso(st.med):'-'}</td>
@@ -1292,6 +1315,9 @@ $('addScroll').onclick=()=>{addOptRow('scrollRows');};
   e.addEventListener('input',()=>{ saveExWeights(); paint(); renderBatch(); });
   e.addEventListener('change',()=>{ saveExWeights(); paint(); renderBatch(); });
 });
+$('batchWorldScope').onchange=()=>{
+  try{localStorage.setItem(LS_BATCH_WORLD,$('batchWorldScope').value);}catch(e){}
+};
 // v1은 올스탯을 일반 스탯처럼 계산하던 설정이라 의미가 달라졌음. v2에서 정확한 기본값으로 새로 시작.
 const LS_EXW='mvpListings.exWeights.v2';
 function saveExWeights(){
@@ -1318,6 +1344,10 @@ function loadExWeights(){
   if(last)applyFilters(last);
   if(!$('potRows').children.length)addOptRow('potRows');
   loadExWeights();
+  try{
+    const savedWorld=localStorage.getItem(LS_BATCH_WORLD);
+    if(['saved','mine','all'].includes(savedWorld))$('batchWorldScope').value=savedWorld;
+  }catch(e){}
   renderPresets();
   renderBatchPicker();
   renderApplied();

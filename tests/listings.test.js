@@ -56,8 +56,28 @@ const batchSource = between('function renderBatch()', 'function topFiveHtml');
 assert.match(batchSource, /\.slice\(0,5\)/, '가격순 상위 5개만 사용');
 assert.doesNotMatch(batchSource, /querySelectorAll\('tr\.brow'/, '행 전체 클릭 동작 제거');
 assert.doesNotMatch(batchSource, /scrollIntoView/, '3번 영역 자동 이동 제거');
-assert.match(html, /searchFilters=\{\.\.\.p\.filters,sortType:'PRICE_PER_ITEM_ASC'\}/,
-  '일괄 조회는 검색 자체를 개당 가격 오름차순으로 강제');
+const makeBatchSearchFilters = new Function(
+  `${between('function makeBatchSearchFilters', 'function renderBatchPicker')}\nreturn makeBatchSearchFilters;`
+)();
+const buildAuctionUrl = new Function('AUCTION_BACKEND',
+  `${between('function buildAuctionUrl', 'function readFilters')}\nreturn buildAuctionUrl;`
+)('https://mvp-sise-api.onrender.com');
+const stored = {
+  keyword:'에테르넬 나이트헬름', exact:'true', category:'ARMOR',
+  sortType:'PRICE_DESC', worldScope:'all', limit:'20', sampleN:'1',
+  potRows:[], addRows:[], exRows:[], scrollRows:[]
+};
+const mine = makeBatchSearchFilters(stored, 'mine');
+assert.equal(mine.sortType, 'PRICE_PER_ITEM_ASC');
+assert.equal(mine.worldScope, 'mine');
+assert.equal(stored.worldScope, 'all', '일괄 검색에서 저장된 조건을 변경하지 않는다');
+assert.match(buildAuctionUrl(mine), /isAllWorldSearchEnabled=true/,
+  '현재 월드만 선택 시 옥션 검색에 월드 필터가 들어간다');
+assert.doesNotMatch(buildAuctionUrl(makeBatchSearchFilters(stored, 'all')),
+  /isAllWorldSearchEnabled/, '전체 월드 선택 시 월드 필터를 해제한다');
+assert.equal(makeBatchSearchFilters({...stored,worldScope:'mine'}, 'saved').worldScope,
+  'mine', '저장된 조건대로 검색할 수 있다');
+assert.match(html, /id="batchWorldScope"/);
 
 assert.match(html, /올스탯 1%당/);
 assert.doesNotMatch(html, /id="attackType"/);
